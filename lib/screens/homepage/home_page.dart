@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:songhut/constants.dart';
 import 'package:on_audio_query/on_audio_query.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:just_audio/just_audio.dart';
@@ -18,12 +17,8 @@ class MyHomePage extends StatefulWidget {
 class _HomePage extends State<MyHomePage> {
   final OnAudioQuery _audioQuery = OnAudioQuery();
   final AudioPlayer _audioPlayer = AudioPlayer();
-  //final AudioCache _audioCache = AudioCache();
-
-  List<SongModel> allSongs = [];
 
   requestPermission() async {
-    // Web platform don't support permissions methods.
     if (!kIsWeb) {
       bool permissionStatus = await _audioQuery.permissionsStatus();
       if (!permissionStatus) {
@@ -39,88 +34,100 @@ class _HomePage extends State<MyHomePage> {
     requestPermission();
   }
 
+  void _openPlayer(BuildContext context, List<SongModel> songs, int startId) {
+    context.read<SongModelProvider>().setId(startId);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            SongPlayer(songModelList: songs, audioPlayer: _audioPlayer),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-        color: kPrimaryColor,
-        child: SafeArea(
-          child: Scaffold(
-            appBar: AppBar(
-              title: const Text("Welcome Back!"),
-              backgroundColor: kPrimaryColor,
-            ),
-            body: FutureBuilder<List<SongModel>>(
-              // Default values:
-              future: _audioQuery.querySongs(
-                sortType: null,
-                orderType: OrderType.ASC_OR_SMALLER,
-                uriType: UriType.EXTERNAL,
-                ignoreCase: true,
-              ),
-              builder: (context, item) {
-                // Loading content
-                if (item.data == null) return const CircularProgressIndicator();
+    return Scaffold(
+      appBar: AppBar(title: const Text('AudioMark')),
+      body: FutureBuilder<List<SongModel>>(
+        future: _audioQuery.querySongs(
+          sortType: null,
+          orderType: OrderType.ASC_OR_SMALLER,
+          uriType: UriType.EXTERNAL,
+          ignoreCase: true,
+        ),
+        builder: (context, item) {
+          if (item.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (item.hasError) {
+            return _emptyState(
+              context,
+              Icons.error_outline,
+              'Something went wrong while loading your music.',
+            );
+          }
 
-                // When you try "query" without asking for [READ] or [Library] permission
-                // the plugin will return a [Empty] list.
-                if (item.data!.isEmpty) return const Text("Nothing found!");
-                allSongs.addAll(item.data!);
-                // You can use [item.data!] direct or you can create a:
-                // List<SongModel> songs = item.data!;
-                return Stack(
-                  children: [
-                    ListView.builder(
-                      itemCount: item.data!.length,
-                      padding: const EdgeInsets.fromLTRB(0, 0, 0, 60),
-                      itemBuilder: (context, index) {
-                        return GestureDetector(
-                          onTap: () {
-                            context
-                                .read<SongModelProvider>()
-                                .setId(item.data![index].id);
-                            Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => SongPlayer(
-                                      songModelList: [item.data![index]],
-                                      audioPlayer: _audioPlayer),
-                                ));
-                          },
-                          child: MusicTile(
-                            songModel: item.data![index],
-                          ),
-                        );
-                      },
-                    ),
-                    Align(
-                      alignment: Alignment.bottomRight,
-                      child: GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (context) => SongPlayer(
-                                      songModelList: allSongs,
-                                      audioPlayer: _audioPlayer)));
-                        },
-                        child: Container(
-                          margin: const EdgeInsets.fromLTRB(0, 0, 15, 15),
-                          child: const CircleAvatar(
-                            backgroundColor: kPrimaryColor,
-                            radius: 30,
-                            child: Icon(
-                              Icons.play_arrow_rounded,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
+          final List<SongModel> songs = item.data ?? <SongModel>[];
+          if (songs.isEmpty) {
+            return _emptyState(
+              context,
+              Icons.library_music_outlined,
+              "No songs found on this device.\nMake sure you've granted music access.",
+            );
+          }
+
+          return ListView.separated(
+            itemCount: songs.length,
+            padding: const EdgeInsets.only(bottom: 96),
+            separatorBuilder: (_, __) =>
+                const Divider(height: 1, indent: 80, endIndent: 16),
+            itemBuilder: (context, index) {
+              final song = songs[index];
+              return MusicTile(
+                songModel: song,
+                onTap: () => _openPlayer(context, [song], song.id),
+              );
+            },
+          );
+        },
+      ),
+      floatingActionButton: FutureBuilder<List<SongModel>>(
+        future: _audioQuery.querySongs(uriType: UriType.EXTERNAL),
+        builder: (context, snapshot) {
+          final songs = snapshot.data ?? <SongModel>[];
+          if (songs.isEmpty) return const SizedBox.shrink();
+          return FloatingActionButton.extended(
+            onPressed: () => _openPlayer(context, songs, songs.first.id),
+            icon: const Icon(Icons.play_arrow_rounded),
+            label: const Text('Play all'),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _emptyState(BuildContext context, IconData icon, String message) {
+    final scheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 64, color: scheme.outline),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyLarge
+                  ?.copyWith(color: scheme.onSurfaceVariant),
             ),
-          ),
-        ));
+          ],
+        ),
+      ),
+    );
   }
 }
