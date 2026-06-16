@@ -38,9 +38,25 @@ class _HomePage extends State<MyHomePage> {
     context.read<SongModelProvider>().setId(startId);
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) =>
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 350),
+        reverseTransitionDuration: const Duration(milliseconds: 300),
+        pageBuilder: (_, __, ___) =>
             SongPlayer(songModelList: songs, audioPlayer: _audioPlayer),
+        transitionsBuilder: (_, animation, __, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          );
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, 1),
+              end: Offset.zero,
+            ).animate(curved),
+            child: FadeTransition(opacity: curved, child: child),
+          );
+        },
       ),
     );
   }
@@ -58,7 +74,7 @@ class _HomePage extends State<MyHomePage> {
         ),
         builder: (context, item) {
           if (item.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const _LoadingSkeleton();
           }
           if (item.hasError) {
             return _emptyState(
@@ -126,6 +142,75 @@ class _HomePage extends State<MyHomePage> {
                   ?.copyWith(color: scheme.onSurfaceVariant),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A gently pulsing placeholder list shown while the music library loads,
+/// instead of a bare spinner.
+class _LoadingSkeleton extends StatefulWidget {
+  const _LoadingSkeleton();
+
+  @override
+  State<_LoadingSkeleton> createState() => _LoadingSkeletonState();
+}
+
+class _LoadingSkeletonState extends State<_LoadingSkeleton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final Color base = Theme.of(context).colorScheme.surfaceVariant;
+    Widget bar(double width, double height) => Container(
+          width: width,
+          height: height,
+          decoration: BoxDecoration(
+            color: base,
+            borderRadius: BorderRadius.circular(6),
+          ),
+        );
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: 8,
+      itemBuilder: (context, index) => FadeTransition(
+        opacity: Tween<double>(begin: 0.35, end: 0.8).animate(_controller),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: base,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    bar(double.infinity, 14),
+                    const SizedBox(height: 8),
+                    bar(140, 12),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

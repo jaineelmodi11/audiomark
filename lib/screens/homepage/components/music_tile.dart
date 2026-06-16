@@ -18,23 +18,26 @@ class MusicTile extends StatelessWidget {
     return ListTile(
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      leading: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: QueryArtworkWidget(
-          id: songModel.id,
-          type: ArtworkType.AUDIO,
-          artworkHeight: 48,
-          artworkWidth: 48,
-          artworkBorder: BorderRadius.circular(8),
-          artworkFit: BoxFit.cover,
-          nullArtworkWidget: Container(
-            height: 48,
-            width: 48,
-            decoration: BoxDecoration(
-              color: scheme.primaryContainer,
-              borderRadius: BorderRadius.circular(8),
+      leading: Hero(
+        tag: 'artwork_${songModel.id}',
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: QueryArtworkWidget(
+            id: songModel.id,
+            type: ArtworkType.AUDIO,
+            artworkHeight: 52,
+            artworkWidth: 52,
+            artworkBorder: BorderRadius.circular(12),
+            artworkFit: BoxFit.cover,
+            nullArtworkWidget: Container(
+              height: 52,
+              width: 52,
+              decoration: BoxDecoration(
+                color: scheme.primaryContainer,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.music_note, color: scheme.onPrimaryContainer),
             ),
-            child: Icon(Icons.music_note, color: scheme.onPrimaryContainer),
           ),
         ),
       ),

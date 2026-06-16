@@ -30,10 +30,28 @@ class AppTheme {
           fontWeight: FontWeight.bold,
         ),
       ),
-      sliderTheme: const SliderThemeData(
+      sliderTheme: SliderThemeData(
         showValueIndicator: ShowValueIndicator.always,
-        rangeValueIndicatorShape: PaddleRangeSliderValueIndicatorShape(),
-        trackHeight: 3,
+        rangeValueIndicatorShape: const PaddleRangeSliderValueIndicatorShape(),
+        trackHeight: 4,
+        trackShape: const RoundedRectSliderTrackShape(),
+        thumbShape: const RoundSliderThumbShape(
+          enabledThumbRadius: 7,
+          elevation: 1,
+          pressedElevation: 3,
+        ),
+        overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+        rangeThumbShape: const RoundRangeSliderThumbShape(
+          enabledThumbRadius: 8,
+          elevation: 1,
+        ),
+        inactiveTrackColor: scheme.surfaceVariant,
+      ),
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: ZoomPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        },
       ),
     );
   }

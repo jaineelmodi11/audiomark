@@ -239,6 +239,17 @@ class _SongPlayerState extends State<SongPlayer> {
           height: height,
           width: double.infinity,
           padding: const EdgeInsets.all(15.0),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                scheme.primaryContainer.withOpacity(0.45),
+                scheme.surface,
+              ],
+              stops: const [0.0, 0.55],
+            ),
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -400,14 +411,20 @@ class _SongPlayerState extends State<SongPlayer> {
                             });
                           },
                           icon: CircleAvatar(
-                            radius: 30,
+                            radius: 32,
                             backgroundColor: scheme.primary,
-                            child: Icon(
-                              color: scheme.onPrimary,
-                              _isPlaying
-                                  ? Icons.pause_rounded
-                                  : Icons.play_arrow_rounded,
-                              size: 30.0,
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 220),
+                              transitionBuilder: (child, anim) =>
+                                  ScaleTransition(scale: anim, child: child),
+                              child: Icon(
+                                _isPlaying
+                                    ? Icons.pause_rounded
+                                    : Icons.play_arrow_rounded,
+                                key: ValueKey<bool>(_isPlaying),
+                                color: scheme.onPrimary,
+                                size: 32.0,
+                              ),
                             ),
                           ),
                         ),
@@ -459,23 +476,39 @@ class ArtWorkWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return QueryArtworkWidget(
-      id: context.watch<SongModelProvider>().id,
-      type: ArtworkType.AUDIO,
-      artworkHeight: 300,
-      artworkWidth: 300,
-      artworkBorder: const BorderRadius.all(Radius.circular(30)),
-      artworkFit: BoxFit.cover,
-      nullArtworkWidget: Container(
-        height: 300,
-        width: 300,
+    final int id = context.watch<SongModelProvider>().id;
+    return Hero(
+      tag: 'artwork_$id',
+      child: Container(
         decoration: BoxDecoration(
-            color: scheme.primaryContainer,
-            borderRadius: const BorderRadius.all(Radius.circular(30))),
-        child: Icon(
-          Icons.music_note_rounded,
-          size: 200,
-          color: scheme.onPrimaryContainer,
+          borderRadius: const BorderRadius.all(Radius.circular(28)),
+          boxShadow: [
+            BoxShadow(
+              color: scheme.shadow.withOpacity(0.18),
+              blurRadius: 28,
+              offset: const Offset(0, 12),
+            ),
+          ],
+        ),
+        child: QueryArtworkWidget(
+          id: id,
+          type: ArtworkType.AUDIO,
+          artworkHeight: 300,
+          artworkWidth: 300,
+          artworkBorder: const BorderRadius.all(Radius.circular(28)),
+          artworkFit: BoxFit.cover,
+          nullArtworkWidget: Container(
+            height: 300,
+            width: 300,
+            decoration: BoxDecoration(
+                color: scheme.primaryContainer,
+                borderRadius: const BorderRadius.all(Radius.circular(28))),
+            child: Icon(
+              Icons.music_note_rounded,
+              size: 180,
+              color: scheme.onPrimaryContainer,
+            ),
+          ),
         ),
       ),
     );
