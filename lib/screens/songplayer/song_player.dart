@@ -11,7 +11,7 @@ import 'package:songhut/screens/songplayer/components/favorite_button.dart';
 import 'package:songhut/screens/songplayer/components/loop_button.dart';
 import 'package:songhut/screens/songplayer/components/shuffle_button.dart';
 import 'package:songhut/screens/settings/settings_screen.dart';
-import '../../constants.dart';
+import 'package:songhut/utils/song_color.dart';
 import '../../provider/songModelProvider.dart';
 
 class SongPlayer extends StatefulWidget {
@@ -290,7 +290,10 @@ class _SongPlayerState extends State<SongPlayer> {
               end: Alignment.bottomCenter,
               colors: [
                 Color.alphaBlend(
-                  (_artColor ?? scheme.primaryContainer).withOpacity(0.5),
+                  (_artColor ??
+                          songColorForId(
+                              widget.songModelList[currentIndex].id))
+                      .withOpacity(0.5),
                   scheme.surface,
                 ),
                 scheme.surface,
@@ -555,12 +558,17 @@ class ArtWorkWidget extends StatelessWidget {
             height: 300,
             width: 300,
             decoration: BoxDecoration(
-                color: scheme.primaryContainer,
-                borderRadius: const BorderRadius.all(Radius.circular(28))),
-            child: Icon(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: songGradientForId(id),
+              ),
+              borderRadius: const BorderRadius.all(Radius.circular(28)),
+            ),
+            child: const Icon(
               Icons.music_note_rounded,
-              size: 180,
-              color: scheme.onPrimaryContainer,
+              size: 120,
+              color: Colors.white,
             ),
           ),
         ),

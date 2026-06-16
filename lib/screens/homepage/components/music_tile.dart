@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:on_audio_query/on_audio_query.dart';
 import 'package:songhut/utils/extensions/SongModelExtension.dart';
+import 'package:songhut/utils/song_color.dart';
 
 class MusicTile extends StatelessWidget {
   final SongModel songModel;
@@ -14,7 +15,6 @@ class MusicTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return ListTile(
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -33,10 +33,15 @@ class MusicTile extends StatelessWidget {
               height: 52,
               width: 52,
               decoration: BoxDecoration(
-                color: scheme.primaryContainer,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: songGradientForId(songModel.id),
+                ),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(Icons.music_note, color: scheme.onPrimaryContainer),
+              child: const Icon(Icons.music_note_rounded,
+                  color: Colors.white, size: 24),
             ),
           ),
         ),
