@@ -158,11 +158,16 @@ class _SongPlayerState extends State<SongPlayer> {
     _currentIndexSub = widget.audioPlayer.currentIndexStream.listen(
       (event) {
         if (!mounted) return;
+        // The AudioPlayer is shared, so its currentIndexStream can replay a
+        // stale index from a previous (longer) queue before this player's
+        // audio source resets it. Ignore indices outside our list to avoid a
+        // RangeError when the player was opened with a single song.
+        if (event == null || event < 0 || event >= widget.songModelList.length) {
+          return;
+        }
         setState(
           () {
-            if (event != null) {
-              currentIndex = event;
-            }
+            currentIndex = event;
             context
                 .read<SongModelProvider>()
                 .setId(widget.songModelList[currentIndex].id);
