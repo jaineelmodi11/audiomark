@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:songhut/constants.dart';
 
-const List<double> list = <double>[0.25, 0.5, 0.75, 1.0, 1.5, 1.75, 2.0];
+const List<double> list = <double>[0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
 class AdjustSpeed extends StatefulWidget {
   const AdjustSpeed({super.key, required this.audioPlayer});
@@ -22,7 +22,6 @@ class _AdjustSpeedState extends State<AdjustSpeed> {
       elevation: 16,
       focusColor: kPrimaryColor,
       onChanged: (double? value) {
-        // This is called when the user selects an item.
         setState(() {
           dropdownValue = value!;
           widget.audioPlayer.setSpeed(dropdownValue);

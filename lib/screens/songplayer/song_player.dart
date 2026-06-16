@@ -6,9 +6,9 @@ import 'package:songhut/screens/songplayer/components/adjust_speed_button.dart';
 import 'package:songhut/screens/songplayer/components/favorite_button.dart';
 import 'package:songhut/screens/songplayer/components/loop_button.dart';
 import 'package:songhut/screens/songplayer/components/shuffle_button.dart';
+import 'package:songhut/screens/settings/settings_screen.dart';
 import '../../constants.dart';
 import '../../provider/songModelProvider.dart';
-import '../coming_soon.dart';
 
 class SongPlayer extends StatefulWidget {
   const SongPlayer({
@@ -160,6 +160,50 @@ class _SongPlayerState extends State<SongPlayer> {
     return hours > 0 ? '$hours:${two(minutes)}:${two(seconds)}' : '$minutes:${two(seconds)}';
   }
 
+  void _showMoreMenu() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('Song details'),
+              subtitle:
+                  Text(widget.songModelList[currentIndex].displayNameWOExt),
+            ),
+            ListTile(
+              leading: const Icon(Icons.restart_alt_rounded),
+              title: const Text('Reset speed & loop'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                resetConfigurations();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.settings_outlined),
+              title: const Text('Settings'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => const SettingsScreen()),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -185,10 +229,7 @@ class _SongPlayerState extends State<SongPlayer> {
                   const Text("Now Playing"),
                   IconButton(
                     onPressed: () {
-                      Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => const ComingSoon()));
+                      _showMoreMenu();
                     },
                     icon: Icon(
                       Icons.more_horiz,
