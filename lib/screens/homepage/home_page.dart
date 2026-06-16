@@ -100,9 +100,12 @@ class _HomePage extends State<MyHomePage> {
                 const Divider(height: 1, indent: 80, endIndent: 16),
             itemBuilder: (context, index) {
               final song = songs[index];
-              return MusicTile(
-                songModel: song,
-                onTap: () => _openPlayer(context, [song], song.id),
+              return _FadeSlideIn(
+                index: index,
+                child: MusicTile(
+                  songModel: song,
+                  onTap: () => _openPlayer(context, [song], song.id),
+                ),
               );
             },
           );
@@ -143,6 +146,59 @@ class _HomePage extends State<MyHomePage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Fades and slides a child up into place, staggered by its list index, so the
+/// song list cascades in as it appears. Runs once on first mount.
+class _FadeSlideIn extends StatefulWidget {
+  final int index;
+  final Widget child;
+
+  const _FadeSlideIn({required this.index, required this.child});
+
+  @override
+  State<_FadeSlideIn> createState() => _FadeSlideInState();
+}
+
+class _FadeSlideInState extends State<_FadeSlideIn>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 380),
+  );
+  late final Animation<double> _curve =
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic);
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(
+      Duration(milliseconds: 60 * widget.index),
+      () {
+        if (mounted) _controller.forward();
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _curve,
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0, 0.12),
+          end: Offset.zero,
+        ).animate(_curve),
+        child: widget.child,
       ),
     );
   }

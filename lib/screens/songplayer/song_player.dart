@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:on_audio_query/on_audio_query.dart';
 import 'package:provider/provider.dart';
@@ -40,6 +42,45 @@ class _SongPlayerState extends State<SongPlayer> {
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<PlayerState>? _playerStateSub;
   StreamSubscription<int?>? _currentIndexSub;
+
+  /// Dominant colour of the current song's album art, used to tint the player
+  /// background. Null when the song has no embedded artwork.
+  Color? _artColor;
+
+  /// Loads the current song's artwork and derives a vivid dominant colour by
+  /// downscaling to an 8x8 grid and picking the most saturated, bright pixel.
+  Future<void> _loadArtColor() async {
+    final int id = widget.songModelList[currentIndex].id;
+    try {
+      final bytes =
+          await OnAudioQuery().queryArtwork(id, ArtworkType.AUDIO, size: 200);
+      if (bytes == null || bytes.isEmpty) {
+        if (mounted) setState(() => _artColor = null);
+        return;
+      }
+      final codec =
+          await ui.instantiateImageCodec(bytes, targetWidth: 8, targetHeight: 8);
+      final frame = await codec.getNextFrame();
+      final data =
+          await frame.image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (data == null) return;
+      final px = data.buffer.asUint8List();
+      Color best = const Color(0xFF000000);
+      double bestScore = -1;
+      for (int i = 0; i + 4 <= px.length; i += 4) {
+        final color = Color.fromARGB(255, px[i], px[i + 1], px[i + 2]);
+        final hsv = HSVColor.fromColor(color);
+        final score = hsv.saturation * hsv.value;
+        if (score > bestScore) {
+          bestScore = score;
+          best = color;
+        }
+      }
+      if (mounted) setState(() => _artColor = best);
+    } catch (_) {
+      if (mounted) setState(() => _artColor = null);
+    }
+  }
 
   void popBack() {
     Navigator.pop(context);
@@ -129,6 +170,7 @@ class _SongPlayerState extends State<SongPlayer> {
       playAudio();
       listenToEvent();
       listenToSongIndex();
+      _loadArtColor();
     } on Exception catch (_) {
       popBack();
     }
@@ -173,6 +215,7 @@ class _SongPlayerState extends State<SongPlayer> {
                 .setId(widget.songModelList[currentIndex].id);
           },
         );
+        _loadArtColor();
       },
     );
   }
@@ -235,7 +278,9 @@ class _SongPlayerState extends State<SongPlayer> {
     double height = MediaQuery.of(context).size.height;
     return SafeArea(
       child: Scaffold(
-        body: Container(
+        body: AnimatedContainer(
+          duration: const Duration(milliseconds: 650),
+          curve: Curves.easeOut,
           height: height,
           width: double.infinity,
           padding: const EdgeInsets.all(15.0),
@@ -244,7 +289,10 @@ class _SongPlayerState extends State<SongPlayer> {
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                scheme.primaryContainer.withOpacity(0.45),
+                Color.alphaBlend(
+                  (_artColor ?? scheme.primaryContainer).withOpacity(0.5),
+                  scheme.surface,
+                ),
                 scheme.surface,
               ],
               stops: const [0.0, 0.55],
@@ -278,8 +326,13 @@ class _SongPlayerState extends State<SongPlayer> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Center(
-                      child: ArtWorkWidget(),
+                    Center(
+                      child: AnimatedScale(
+                        scale: _isPlaying ? 1.0 : 0.94,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOut,
+                        child: const ArtWorkWidget(),
+                      ),
                     ),
                     const SizedBox(
                       height: 15.0,
@@ -397,6 +450,7 @@ class _SongPlayerState extends State<SongPlayer> {
                         IconButton(
                           iconSize: 60,
                           onPressed: () {
+                            HapticFeedback.lightImpact();
                             setState(() {
                               if (_isPlaying) {
                                 widget.audioPlayer.pause();
