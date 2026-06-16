@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:on_audio_query/on_audio_query.dart';
@@ -34,6 +36,11 @@ class _SongPlayerState extends State<SongPlayer> {
   RangeValues _currentRangeValues = const RangeValues(0.0, 0.0);
   RangeLabels _currentRangeLabels = const RangeLabels("0", "0");
 
+  StreamSubscription<Duration?>? _durationSub;
+  StreamSubscription<Duration>? _positionSub;
+  StreamSubscription<PlayerState>? _playerStateSub;
+  StreamSubscription<int?>? _currentIndexSub;
+
   void popBack() {
     Navigator.pop(context);
   }
@@ -68,6 +75,15 @@ class _SongPlayerState extends State<SongPlayer> {
     parseSong();
   }
 
+  @override
+  void dispose() {
+    _durationSub?.cancel();
+    _positionSub?.cancel();
+    _playerStateSub?.cancel();
+    _currentIndexSub?.cancel();
+    super.dispose();
+  }
+
   void parseSong() async {
     try {
       for (var element in widget.songModelList) {
@@ -81,8 +97,9 @@ class _SongPlayerState extends State<SongPlayer> {
         ConcatenatingAudioSource(children: songList),
       );
 
-      widget.audioPlayer.durationStream.listen((duration) {
+      _durationSub = widget.audioPlayer.durationStream.listen((duration) {
         if (duration != null) {
+          if (!mounted) return;
           setState(() {
             _duration = duration;
 
@@ -93,7 +110,8 @@ class _SongPlayerState extends State<SongPlayer> {
           });
         }
       });
-      widget.audioPlayer.positionStream.listen((position) {
+      _positionSub = widget.audioPlayer.positionStream.listen((position) {
+        if (!mounted) return;
         setState(() {
           _position = position;
         });
@@ -117,7 +135,8 @@ class _SongPlayerState extends State<SongPlayer> {
   }
 
   void listenToEvent() {
-    widget.audioPlayer.playerStateStream.listen((state) {
+    _playerStateSub = widget.audioPlayer.playerStateStream.listen((state) {
+      if (!mounted) return;
       if (state.playing) {
         setState(() {
           _isPlaying = true;
@@ -136,8 +155,9 @@ class _SongPlayerState extends State<SongPlayer> {
   }
 
   void listenToSongIndex() {
-    widget.audioPlayer.currentIndexStream.listen(
+    _currentIndexSub = widget.audioPlayer.currentIndexStream.listen(
       (event) {
+        if (!mounted) return;
         setState(
           () {
             if (event != null) {
