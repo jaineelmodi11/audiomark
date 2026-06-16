@@ -1,6 +1,4 @@
-//import 'package:audioplayers/audioplayers.dart';
-
-import 'dart:math';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
@@ -10,9 +8,9 @@ import 'package:songhut/screens/songplayer/components/adjust_speed_button.dart';
 import 'package:songhut/screens/songplayer/components/favorite_button.dart';
 import 'package:songhut/screens/songplayer/components/loop_button.dart';
 import 'package:songhut/screens/songplayer/components/shuffle_button.dart';
+import 'package:songhut/screens/settings/settings_screen.dart';
 import '../../constants.dart';
 import '../../provider/songModelProvider.dart';
-import '../coming_soon.dart';
 
 class SongPlayer extends StatefulWidget {
   const SongPlayer({
@@ -37,6 +35,11 @@ class _SongPlayerState extends State<SongPlayer> {
   int currentIndex = 0;
   RangeValues _currentRangeValues = const RangeValues(0.0, 0.0);
   RangeLabels _currentRangeLabels = const RangeLabels("0", "0");
+
+  StreamSubscription<Duration?>? _durationSub;
+  StreamSubscription<Duration>? _positionSub;
+  StreamSubscription<PlayerState>? _playerStateSub;
+  StreamSubscription<int?>? _currentIndexSub;
 
   void popBack() {
     Navigator.pop(context);
@@ -64,13 +67,21 @@ class _SongPlayerState extends State<SongPlayer> {
 
     widget.audioPlayer.play();
     _isPlaying = true;
-    // await widget.audioPlayer.pause();
   }
 
   @override
   void initState() {
     super.initState();
     parseSong();
+  }
+
+  @override
+  void dispose() {
+    _durationSub?.cancel();
+    _positionSub?.cancel();
+    _playerStateSub?.cancel();
+    _currentIndexSub?.cancel();
+    super.dispose();
   }
 
   void parseSong() async {
@@ -86,8 +97,9 @@ class _SongPlayerState extends State<SongPlayer> {
         ConcatenatingAudioSource(children: songList),
       );
 
-      widget.audioPlayer.durationStream.listen((duration) {
+      _durationSub = widget.audioPlayer.durationStream.listen((duration) {
         if (duration != null) {
+          if (!mounted) return;
           setState(() {
             _duration = duration;
 
@@ -98,7 +110,8 @@ class _SongPlayerState extends State<SongPlayer> {
           });
         }
       });
-      widget.audioPlayer.positionStream.listen((position) {
+      _positionSub = widget.audioPlayer.positionStream.listen((position) {
+        if (!mounted) return;
         setState(() {
           _position = position;
         });
@@ -122,7 +135,8 @@ class _SongPlayerState extends State<SongPlayer> {
   }
 
   void listenToEvent() {
-    widget.audioPlayer.playerStateStream.listen((state) {
+    _playerStateSub = widget.audioPlayer.playerStateStream.listen((state) {
+      if (!mounted) return;
       if (state.playing) {
         setState(() {
           _isPlaying = true;
@@ -141,8 +155,9 @@ class _SongPlayerState extends State<SongPlayer> {
   }
 
   void listenToSongIndex() {
-    widget.audioPlayer.currentIndexStream.listen(
+    _currentIndexSub = widget.audioPlayer.currentIndexStream.listen(
       (event) {
+        if (!mounted) return;
         setState(
           () {
             if (event != null) {
@@ -157,16 +172,61 @@ class _SongPlayerState extends State<SongPlayer> {
     );
   }
 
-  _millisToMinutesAndSeconds(seconds) {
-    int min = ((seconds / 60).toInt());
-    int sec = ((seconds % 60).toInt());
-    String minute = min.toString().length <= 1 ? "0$min" : "$min";
-    String second = sec.toString().length <= 1 ? "0$sec" : "$sec";
-    return "$minute:$second";
+  String _formatTime(Duration d) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    final hours = d.inHours;
+    final minutes = d.inMinutes % 60;
+    final seconds = d.inSeconds % 60;
+    return hours > 0 ? '$hours:${two(minutes)}:${two(seconds)}' : '$minutes:${two(seconds)}';
+  }
+
+  void _showMoreMenu() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('Song details'),
+              subtitle:
+                  Text(widget.songModelList[currentIndex].displayNameWOExt),
+            ),
+            ListTile(
+              leading: const Icon(Icons.restart_alt_rounded),
+              title: const Text('Reset speed & loop'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                resetConfigurations();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.settings_outlined),
+              title: const Text('Settings'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => const SettingsScreen()),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     double height = MediaQuery.of(context).size.height;
     return SafeArea(
       child: Scaffold(
@@ -184,19 +244,16 @@ class _SongPlayerState extends State<SongPlayer> {
                     onPressed: () {
                       popBack();
                     },
-                    icon: const Icon(Icons.arrow_back_ios),
+                    icon: const Icon(Icons.keyboard_arrow_down_rounded),
                   ),
                   const Text("Now Playing"),
                   IconButton(
                     onPressed: () {
-                      Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => const ComingSoon()));
+                      _showMoreMenu();
                     },
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.more_horiz,
-                      color: kLightColor,
+                      color: scheme.onSurfaceVariant,
                     ),
                   ),
                 ],
@@ -228,17 +285,36 @@ class _SongPlayerState extends State<SongPlayer> {
                                 widget.songModelList[currentIndex].artist
                                     .toString(),
                                 textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                    color: kLightColor,
+                                style: TextStyle(
+                                    color: scheme.onSurfaceVariant,
                                     fontWeight: FontWeight.normal,
                                     fontSize: 14.0,
                                     overflow: TextOverflow.ellipsis),
                                 maxLines: 1,
                               )
                             : null),
+                    const SizedBox(height: 12.0),
+                    Row(
+                      children: [
+                        Icon(Icons.repeat_rounded,
+                            size: 16, color: scheme.onSurfaceVariant),
+                        const SizedBox(width: 6),
+                        Text(
+                          "Loop section",
+                          style: TextStyle(
+                              color: scheme.onSurfaceVariant, fontSize: 12),
+                        ),
+                        const Spacer(),
+                        Text(
+                          "${_formatTime(Duration(seconds: _currentRangeValues.start.toInt()))}  -  ${_formatTime(Duration(seconds: _currentRangeValues.end.toInt()))}",
+                          style: TextStyle(
+                              color: scheme.onSurfaceVariant, fontSize: 12),
+                        ),
+                      ],
+                    ),
                     RangeSlider(
-                      activeColor: kPrimaryColor,
-                      inactiveColor: Colors.transparent,
+                      activeColor: scheme.primary,
+                      inactiveColor: scheme.surfaceVariant,
                       values: _currentRangeValues,
                       min: 0.0,
                       max: _duration.inSeconds.toDouble(),
@@ -247,25 +323,26 @@ class _SongPlayerState extends State<SongPlayer> {
                         setState(() {
                           _currentRangeValues = value;
                           _currentRangeLabels = RangeLabels(
-                              _millisToMinutesAndSeconds(value.start),
-                              _millisToMinutesAndSeconds(value.end));
+                              _formatTime(
+                                  Duration(seconds: value.start.toInt())),
+                              _formatTime(
+                                  Duration(seconds: value.end.toInt())));
                         });
                       },
                     ),
                     Slider(
                       mouseCursor: SystemMouseCursors.grab,
-                      //thumbColor: Colors.red,
-                      activeColor: kPrimaryColor,
-                      inactiveColor: kLightColor2,
+                      activeColor: scheme.primary,
+                      inactiveColor: scheme.surfaceVariant,
                       min: 0.0,
-                      value: _position.inSeconds.toDouble(),
+                      value: _position.inSeconds
+                          .toDouble()
+                          .clamp(0.0, _duration.inSeconds.toDouble()),
                       max: _duration.inSeconds.toDouble(),
-
                       onChanged: (value) {
                         setState(
                           () {
                             seekToSeconds(value.toInt());
-                            value = value;
                           },
                         );
                       },
@@ -274,12 +351,8 @@ class _SongPlayerState extends State<SongPlayer> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Text(
-                          _position.toString().split(".")[0],
-                        ),
-                        Text(
-                          _duration.toString().split(".")[0],
-                        )
+                        Text(_formatTime(_position)),
+                        Text(_formatTime(_duration)),
                       ],
                     ),
                     const SizedBox(
@@ -295,11 +368,11 @@ class _SongPlayerState extends State<SongPlayer> {
                               resetConfigurations();
                             }
                           },
-                          icon: const CircleAvatar(
+                          icon: CircleAvatar(
                             radius: 30,
-                            backgroundColor: kLightColor2,
+                            backgroundColor: scheme.surfaceVariant,
                             child: Icon(
-                              color: Colors.black,
+                              color: scheme.onSurfaceVariant,
                               Icons.skip_previous_rounded,
                               size: 20.0,
                             ),
@@ -323,9 +396,9 @@ class _SongPlayerState extends State<SongPlayer> {
                           },
                           icon: CircleAvatar(
                             radius: 30,
-                            backgroundColor: kPrimaryColor,
+                            backgroundColor: scheme.primary,
                             child: Icon(
-                              color: Colors.white,
+                              color: scheme.onPrimary,
                               _isPlaying
                                   ? Icons.pause_rounded
                                   : Icons.play_arrow_rounded,
@@ -340,11 +413,11 @@ class _SongPlayerState extends State<SongPlayer> {
                               resetConfigurations();
                             }
                           },
-                          icon: const CircleAvatar(
+                          icon: CircleAvatar(
                             radius: 30,
-                            backgroundColor: kLightColor2,
+                            backgroundColor: scheme.surfaceVariant,
                             child: Icon(
-                              color: Colors.black,
+                              color: scheme.onSurfaceVariant,
                               Icons.skip_next_rounded,
                               size: 20.0,
                             ),
@@ -352,6 +425,7 @@ class _SongPlayerState extends State<SongPlayer> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 8.0),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
@@ -379,6 +453,7 @@ class ArtWorkWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return QueryArtworkWidget(
       id: context.watch<SongModelProvider>().id,
       type: ArtworkType.AUDIO,
@@ -390,15 +465,12 @@ class ArtWorkWidget extends StatelessWidget {
         height: 300,
         width: 300,
         decoration: BoxDecoration(
-            color: kPrimaryColor,
-            border: Border.all(
-              color: kPrimaryColor,
-            ),
+            color: scheme.primaryContainer,
             borderRadius: const BorderRadius.all(Radius.circular(30))),
-        child: const Icon(
+        child: Icon(
           Icons.music_note_rounded,
           size: 200,
-          color: Colors.white,
+          color: scheme.onPrimaryContainer,
         ),
       ),
     );
