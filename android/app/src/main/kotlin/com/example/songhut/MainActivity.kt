@@ -16,7 +16,9 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
-                if (call.method == "importToMusic") {
+                if (call.method == "getSdkInt") {
+                    result.success(Build.VERSION.SDK_INT)
+                } else if (call.method == "importToMusic") {
                     val path = call.argument<String>("path")
                     val name = call.argument<String>("name")
                     if (path == null || name == null) {

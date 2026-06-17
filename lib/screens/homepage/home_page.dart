@@ -5,6 +5,7 @@ import 'package:on_audio_query/on_audio_query.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:file_picker/file_picker.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:songhut/screens/songplayer/song_player.dart';
 import 'package:songhut/services/prefs_service.dart';
 import 'package:songhut/utils/song_color.dart';
@@ -27,6 +28,7 @@ class _HomePage extends State<MyHomePage> {
   final TextEditingController _searchController = TextEditingController();
   String _query = '';
   _SortMode _sort = _SortMode.nameAsc;
+  bool _hasPermission = false;
   // Cached so typing in search / changing sort doesn't re-run the query (which
   // would flash the loading skeleton on every keystroke).
   late Future<List<SongModel>> _songsFuture;
@@ -39,6 +41,7 @@ class _HomePage extends State<MyHomePage> {
       );
 
   void _refreshSongs() {
+    if (!_hasPermission) return; // never query on_audio_query without access
     setState(() {
       _songsFuture = _querySongs();
     });
@@ -76,20 +79,36 @@ class _HomePage extends State<MyHomePage> {
     }
   }
 
-  requestPermission() async {
-    if (!kIsWeb) {
-      bool permissionStatus = await _audioQuery.permissionsStatus();
-      if (!permissionStatus) {
-        await _audioQuery.permissionsRequest();
-      }
-      _refreshSongs();
+  Future<void> requestPermission() async {
+    if (kIsWeb) {
+      setState(() => _hasPermission = true);
+      return;
     }
+    // Handle the permission ourselves with permission_handler — on_audio_query
+    // 2.9.0's own request path crashes on Android 13. Use READ_MEDIA_AUDIO on
+    // API 33+, READ_EXTERNAL_STORAGE below.
+    int sdkInt = 33;
+    try {
+      sdkInt = await _importChannel.invokeMethod<int>('getSdkInt') ?? 33;
+    } catch (_) {}
+    final Permission perm =
+        sdkInt >= 33 ? Permission.audio : Permission.storage;
+    var status = await perm.status;
+    if (!status.isGranted) {
+      status = await perm.request();
+    }
+    if (!mounted) return;
+    setState(() => _hasPermission = status.isGranted);
+    if (status.isGranted) _refreshSongs();
   }
 
   @override
   void initState() {
     super.initState();
-    _songsFuture = _querySongs();
+    // Don't query before permission is granted: on_audio_query crashes
+    // (double channel reply) if querySongs runs without library access.
+    // requestPermission() kicks off the first real query once granted.
+    _songsFuture = Future.value(<SongModel>[]);
     requestPermission();
   }
 
@@ -137,7 +156,9 @@ class _HomePage extends State<MyHomePage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('AudioMark'),
-        actions: [
+        actions: !_hasPermission
+            ? const <Widget>[]
+            : [
           IconButton(
             tooltip: 'Add music',
             icon: const Icon(Icons.add_rounded),
@@ -160,7 +181,9 @@ class _HomePage extends State<MyHomePage> {
           ),
         ],
       ),
-      body: FutureBuilder<List<SongModel>>(
+      body: !_hasPermission
+          ? _permissionState(context)
+          : FutureBuilder<List<SongModel>>(
         future: _songsFuture,
         builder: (context, item) {
           if (item.connectionState == ConnectionState.waiting) {
@@ -367,6 +390,36 @@ class _HomePage extends State<MyHomePage> {
         ),
         const Divider(height: 16),
       ],
+    );
+  }
+
+  Widget _permissionState(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.library_music_outlined, size: 64, color: scheme.outline),
+            const SizedBox(height: 16),
+            Text(
+              'AudioMark needs access to your audio to show your library.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyLarge
+                  ?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: requestPermission,
+              icon: const Icon(Icons.lock_open_rounded),
+              label: const Text('Grant access'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

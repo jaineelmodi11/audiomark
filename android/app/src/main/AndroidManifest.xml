@@ -2,9 +2,17 @@
   xmlns:android="http://schemas.android.com/apk/res/android"
   package="com.example.songhut"
 >
-<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-    
+<!-- Android 13+ (API 33): granular media permission for audio. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <!-- Legacy storage permission for Android 12L and below only. -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <!-- WRITE_EXTERNAL_STORAGE is only meaningful pre-scoped-storage. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
    <application
         android:label="AudioMark"
     android:name="${applicationName}"
