@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:songhut/constants.dart';
 
 class LoopButton extends StatefulWidget {
   const LoopButton({super.key, required this.audioPlayer});
@@ -10,27 +9,20 @@ class LoopButton extends StatefulWidget {
 }
 
 class _LoopButtonState extends State<LoopButton> {
-  Color loopColor = Colors.black;
-
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final bool on = widget.audioPlayer.loopMode != LoopMode.off;
     return IconButton(
+      tooltip: 'Loop the selected section',
       onPressed: () {
-        if (widget.audioPlayer.loopMode == LoopMode.off) {
-          widget.audioPlayer.setLoopMode(LoopMode.all);
-          setState(() {
-            loopColor = kPrimaryColor;
-          });
-        } else {
-          widget.audioPlayer.setLoopMode(LoopMode.off);
-          setState(() {
-            loopColor = Colors.black;
-          });
-        }
+        widget.audioPlayer
+            .setLoopMode(on ? LoopMode.off : LoopMode.all);
+        setState(() {});
       },
       icon: Icon(
-        Icons.loop_rounded,
-        color: loopColor,
+        Icons.repeat_rounded,
+        color: on ? scheme.primary : scheme.onSurfaceVariant,
         size: 24.0,
       ),
     );

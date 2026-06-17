@@ -11,6 +11,7 @@ import 'package:songhut/screens/songplayer/components/favorite_button.dart';
 import 'package:songhut/screens/songplayer/components/loop_button.dart';
 import 'package:songhut/screens/songplayer/components/shuffle_button.dart';
 import 'package:songhut/screens/settings/settings_screen.dart';
+import 'package:songhut/services/prefs_service.dart';
 import 'package:songhut/utils/song_color.dart';
 import '../../provider/songModelProvider.dart';
 
@@ -19,9 +20,11 @@ class SongPlayer extends StatefulWidget {
     super.key,
     required this.songModelList,
     required this.audioPlayer,
+    this.initialIndex = 0,
   });
   final List<SongModel> songModelList;
   final AudioPlayer audioPlayer;
+  final int initialIndex;
 
   @override
   State<SongPlayer> createState() => _SongPlayerState();
@@ -82,6 +85,13 @@ class _SongPlayerState extends State<SongPlayer> {
     }
   }
 
+  /// Records the current song as recently played and restores its saved speed.
+  void _recordAndRestore() {
+    final id = widget.songModelList[currentIndex].id;
+    PrefsService.instance.addRecent(id);
+    widget.audioPlayer.setSpeed(PrefsService.instance.getSpeed(id));
+  }
+
   void popBack() {
     Navigator.pop(context);
   }
@@ -113,6 +123,7 @@ class _SongPlayerState extends State<SongPlayer> {
   @override
   void initState() {
     super.initState();
+    currentIndex = widget.initialIndex;
     parseSong();
   }
 
@@ -136,6 +147,7 @@ class _SongPlayerState extends State<SongPlayer> {
       }
       widget.audioPlayer.setAudioSource(
         ConcatenatingAudioSource(children: songList),
+        initialIndex: widget.initialIndex,
       );
 
       _durationSub = widget.audioPlayer.durationStream.listen((duration) {
@@ -143,11 +155,23 @@ class _SongPlayerState extends State<SongPlayer> {
           if (!mounted) return;
           setState(() {
             _duration = duration;
-
-            _currentRangeValues =
-                RangeValues(0, _duration.inSeconds.toDouble());
-            _currentRangeLabels =
-                RangeLabels("0", _duration.inSeconds.toString());
+            final saved = PrefsService.instance
+                .getLoop(widget.songModelList[currentIndex].id);
+            if (saved != null) {
+              final double max = _duration.inSeconds.toDouble();
+              _currentRangeValues = RangeValues(
+                saved[0].toDouble().clamp(0.0, max),
+                saved[1].toDouble().clamp(0.0, max),
+              );
+            } else {
+              _currentRangeValues =
+                  RangeValues(0, _duration.inSeconds.toDouble());
+            }
+            _currentRangeLabels = RangeLabels(
+              _formatTime(
+                  Duration(seconds: _currentRangeValues.start.toInt())),
+              _formatTime(Duration(seconds: _currentRangeValues.end.toInt())),
+            );
           });
         }
       });
@@ -171,6 +195,7 @@ class _SongPlayerState extends State<SongPlayer> {
       listenToEvent();
       listenToSongIndex();
       _loadArtColor();
+      _recordAndRestore();
     } on Exception catch (_) {
       popBack();
     }
@@ -216,6 +241,10 @@ class _SongPlayerState extends State<SongPlayer> {
           },
         );
         _loadArtColor();
+        // Only record recents here — restoring speed would mutate the player
+        // while its index stream is mid-fire (re-entrancy crash).
+        PrefsService.instance
+            .addRecent(widget.songModelList[currentIndex].id);
       },
     );
   }
@@ -401,6 +430,13 @@ class _SongPlayerState extends State<SongPlayer> {
                                   Duration(seconds: value.end.toInt())));
                         });
                       },
+                      onChangeEnd: (RangeValues value) {
+                        PrefsService.instance.setLoop(
+                          widget.songModelList[currentIndex].id,
+                          value.start.toInt(),
+                          value.end.toInt(),
+                        );
+                      },
                     ),
                     Slider(
                       mouseCursor: SystemMouseCursors.grab,
@@ -508,9 +544,12 @@ class _SongPlayerState extends State<SongPlayer> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
-                        FavoriteButton(audioPlayer: widget.audioPlayer),
+                        FavoriteButton(
+                            songId: widget.songModelList[currentIndex].id),
                         ShuffleButton(audioPlayer: widget.audioPlayer),
-                        AdjustSpeed(audioPlayer: widget.audioPlayer),
+                        AdjustSpeed(
+                            audioPlayer: widget.audioPlayer,
+                            songId: widget.songModelList[currentIndex].id),
                         LoopButton(audioPlayer: widget.audioPlayer),
                       ],
                     )

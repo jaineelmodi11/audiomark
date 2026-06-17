@@ -34,15 +34,20 @@ class _HomePage extends State<MyHomePage> {
     requestPermission();
   }
 
-  void _openPlayer(BuildContext context, List<SongModel> songs, int startId) {
-    context.read<SongModelProvider>().setId(startId);
+  void _openPlayer(BuildContext context, List<SongModel> songs, int startIndex) {
+    // Always open within the full library so previous/next/shuffle are
+    // meaningful, starting from the tapped song.
+    context.read<SongModelProvider>().setId(songs[startIndex].id);
     Navigator.push(
       context,
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 350),
         reverseTransitionDuration: const Duration(milliseconds: 300),
-        pageBuilder: (_, __, ___) =>
-            SongPlayer(songModelList: songs, audioPlayer: _audioPlayer),
+        pageBuilder: (_, __, ___) => SongPlayer(
+          songModelList: songs,
+          audioPlayer: _audioPlayer,
+          initialIndex: startIndex,
+        ),
         transitionsBuilder: (_, animation, __, child) {
           final curved = CurvedAnimation(
             parent: animation,
@@ -104,7 +109,7 @@ class _HomePage extends State<MyHomePage> {
                 index: index,
                 child: MusicTile(
                   songModel: song,
-                  onTap: () => _openPlayer(context, [song], song.id),
+                  onTap: () => _openPlayer(context, songs, index),
                 ),
               );
             },
@@ -117,7 +122,7 @@ class _HomePage extends State<MyHomePage> {
           final songs = snapshot.data ?? <SongModel>[];
           if (songs.isEmpty) return const SizedBox.shrink();
           return FloatingActionButton.extended(
-            onPressed: () => _openPlayer(context, songs, songs.first.id),
+            onPressed: () => _openPlayer(context, songs, 0),
             icon: const Icon(Icons.play_arrow_rounded),
             label: const Text('Play all'),
           );
