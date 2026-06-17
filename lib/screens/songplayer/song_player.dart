@@ -50,14 +50,24 @@ class _SongPlayerState extends State<SongPlayer> {
   /// background. Null when the song has no embedded artwork.
   Color? _artColor;
 
+  /// Cache of computed dominant colours by song id (shared across player
+  /// instances) so revisiting a song is instant — no repeated image decode.
+  /// A present key with a null value means "checked, has no artwork".
+  static final Map<int, Color?> _artColorCache = {};
+
   /// Loads the current song's artwork and derives a vivid dominant colour by
   /// downscaling to an 8x8 grid and picking the most saturated, bright pixel.
   Future<void> _loadArtColor() async {
     final int id = widget.songModelList[currentIndex].id;
+    if (_artColorCache.containsKey(id)) {
+      if (mounted) setState(() => _artColor = _artColorCache[id]);
+      return;
+    }
     try {
       final bytes =
           await OnAudioQuery().queryArtwork(id, ArtworkType.AUDIO, size: 200);
       if (bytes == null || bytes.isEmpty) {
+        _artColorCache[id] = null;
         if (mounted) setState(() => _artColor = null);
         return;
       }
@@ -79,6 +89,7 @@ class _SongPlayerState extends State<SongPlayer> {
           best = color;
         }
       }
+      _artColorCache[id] = best;
       if (mounted) setState(() => _artColor = best);
     } catch (_) {
       if (mounted) setState(() => _artColor = null);

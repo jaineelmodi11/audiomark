@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -26,6 +27,7 @@ class _HomePage extends State<MyHomePage> {
   final AudioPlayer _audioPlayer = AudioPlayer();
 
   final TextEditingController _searchController = TextEditingController();
+  Timer? _searchDebounce;
   String _query = '';
   _SortMode _sort = _SortMode.nameAsc;
   bool _hasPermission = false;
@@ -114,6 +116,7 @@ class _HomePage extends State<MyHomePage> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -260,7 +263,12 @@ class _HomePage extends State<MyHomePage> {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: TextField(
         controller: _searchController,
-        onChanged: (v) => setState(() => _query = v),
+        onChanged: (v) {
+          _searchDebounce?.cancel();
+          _searchDebounce = Timer(const Duration(milliseconds: 250), () {
+            if (mounted) setState(() => _query = v);
+          });
+        },
         textInputAction: TextInputAction.search,
         decoration: InputDecoration(
           hintText: 'Search songs or artists',
@@ -271,6 +279,7 @@ class _HomePage extends State<MyHomePage> {
                   icon: const Icon(Icons.close_rounded),
                   tooltip: 'Clear',
                   onPressed: () {
+                    _searchDebounce?.cancel();
                     _searchController.clear();
                     setState(() => _query = '');
                     FocusScope.of(context).unfocus();
