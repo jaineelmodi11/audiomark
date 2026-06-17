@@ -1,16 +1,3 @@
-buildscript {
-    ext.kotlin_version = '1.8.22'
-    repositories {
-        google()
-        mavenCentral()
-    }
-
-    dependencies {
-        classpath 'com.android.tools.build:gradle:7.4.2'
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-    }
-}
-
 allprojects {
     repositories {
         google()
@@ -18,12 +5,39 @@ allprojects {
     }
 }
 
-rootProject.buildDir = '../build'
+rootProject.buildDir = "../build"
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
+
+    // AGP 8 requires every Android module to declare a `namespace`. Some older
+    // Flutter plugins still only set `package` in their manifest, which fails
+    // the build. Backfill the namespace from the manifest package. Registered
+    // here (before evaluationDependsOn below) so it runs before evaluation.
+    afterEvaluate { project ->
+        if (project.hasProperty("android")) {
+            def androidExt = project.extensions.findByName("android")
+            if (androidExt != null) {
+                if (androidExt.namespace == null) {
+                    def manifestFile = project.file("src/main/AndroidManifest.xml")
+                    if (manifestFile.exists()) {
+                        def pkg = new XmlParser().parse(manifestFile).attribute("package")
+                        if (pkg != null && !pkg.toString().isEmpty()) {
+                            androidExt.namespace = pkg.toString()
+                        }
+                    }
+                }
+                // Align Java target with Kotlin's (some old plugins leave Java
+                // at 1.8 while Kotlin defaults to 17 under JDK 17 → mismatch).
+                androidExt.compileOptions {
+                    sourceCompatibility JavaVersion.VERSION_17
+                    targetCompatibility JavaVersion.VERSION_17
+                }
+            }
+        }
+    }
 }
 subprojects {
-    project.evaluationDependsOn(':app')
+    project.evaluationDependsOn(":app")
 }
 
 tasks.register("clean", Delete) {
