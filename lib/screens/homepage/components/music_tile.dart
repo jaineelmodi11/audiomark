@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:on_audio_query/on_audio_query.dart';
-import 'package:songhut/utils/extensions/SongModelExtension.dart';
+import 'package:songhut/utils/extensions/song_model_extension.dart';
 import 'package:songhut/utils/song_color.dart';
 
 class MusicTile extends StatelessWidget {

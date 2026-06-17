@@ -10,7 +10,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:songhut/screens/songplayer/song_player.dart';
 import 'package:songhut/services/prefs_service.dart';
 import 'package:songhut/utils/song_color.dart';
-import '../../provider/songModelProvider.dart';
+import '../../provider/song_model_provider.dart';
 import 'components/music_tile.dart';
 
 enum _SortMode { nameAsc, recentlyAdded, duration }

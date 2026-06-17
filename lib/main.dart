@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:songhut/provider/songModelProvider.dart';
+import 'package:songhut/provider/song_model_provider.dart';
 import 'package:songhut/screens/splash_screen.dart';
 import 'package:songhut/services/prefs_service.dart';
 import 'package:songhut/theme/app_theme.dart';

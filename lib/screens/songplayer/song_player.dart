@@ -13,7 +13,7 @@ import 'package:songhut/screens/songplayer/components/shuffle_button.dart';
 import 'package:songhut/screens/settings/settings_screen.dart';
 import 'package:songhut/services/prefs_service.dart';
 import 'package:songhut/utils/song_color.dart';
-import '../../provider/songModelProvider.dart';
+import '../../provider/song_model_provider.dart';
 
 class SongPlayer extends StatefulWidget {
   const SongPlayer({
