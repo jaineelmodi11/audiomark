@@ -286,7 +286,7 @@ class _HomePage extends State<MyHomePage> {
                   },
                 ),
           filled: true,
-          fillColor: scheme.surfaceVariant.withOpacity(0.4),
+          fillColor: scheme.surfaceContainerHighest.withOpacity(0.4),
           isDense: true,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
@@ -534,7 +534,7 @@ class _LoadingSkeletonState extends State<_LoadingSkeleton>
 
   @override
   Widget build(BuildContext context) {
-    final Color base = Theme.of(context).colorScheme.surfaceVariant;
+    final Color base = Theme.of(context).colorScheme.surfaceContainerHighest;
     Widget bar(double width, double height) => Container(
           width: width,
           height: height,

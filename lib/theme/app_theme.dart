@@ -45,7 +45,7 @@ class AppTheme {
           enabledThumbRadius: 8,
           elevation: 1,
         ),
-        inactiveTrackColor: scheme.surfaceVariant,
+        inactiveTrackColor: scheme.surfaceContainerHighest,
       ),
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {

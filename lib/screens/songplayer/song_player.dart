@@ -426,7 +426,7 @@ class _SongPlayerState extends State<SongPlayer> {
                     ),
                     RangeSlider(
                       activeColor: scheme.primary,
-                      inactiveColor: scheme.surfaceVariant,
+                      inactiveColor: scheme.surfaceContainerHighest,
                       values: _currentRangeValues,
                       min: 0.0,
                       max: _duration.inSeconds.toDouble(),
@@ -452,7 +452,7 @@ class _SongPlayerState extends State<SongPlayer> {
                     Slider(
                       mouseCursor: SystemMouseCursors.grab,
                       activeColor: scheme.primary,
-                      inactiveColor: scheme.surfaceVariant,
+                      inactiveColor: scheme.surfaceContainerHighest,
                       min: 0.0,
                       value: _position.inSeconds
                           .toDouble()
@@ -489,7 +489,7 @@ class _SongPlayerState extends State<SongPlayer> {
                           },
                           icon: CircleAvatar(
                             radius: 30,
-                            backgroundColor: scheme.surfaceVariant,
+                            backgroundColor: scheme.surfaceContainerHighest,
                             child: Icon(
                               color: scheme.onSurfaceVariant,
                               Icons.skip_previous_rounded,
@@ -541,7 +541,7 @@ class _SongPlayerState extends State<SongPlayer> {
                           },
                           icon: CircleAvatar(
                             radius: 30,
-                            backgroundColor: scheme.surfaceVariant,
+                            backgroundColor: scheme.surfaceContainerHighest,
                             child: Icon(
                               color: scheme.onSurfaceVariant,
                               Icons.skip_next_rounded,
