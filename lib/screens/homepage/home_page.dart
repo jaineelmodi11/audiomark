@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -87,14 +88,19 @@ class _HomePage extends State<MyHomePage> {
       return;
     }
     // Handle the permission ourselves with permission_handler — on_audio_query
-    // 2.9.0's own request path crashes on Android 13. Use READ_MEDIA_AUDIO on
-    // API 33+, READ_EXTERNAL_STORAGE below.
-    int sdkInt = 33;
-    try {
-      sdkInt = await _importChannel.invokeMethod<int>('getSdkInt') ?? 33;
-    } catch (_) {}
-    final Permission perm =
-        sdkInt >= 33 ? Permission.audio : Permission.storage;
+    // 2.9.0's own request path crashes on Android 13.
+    final Permission perm;
+    if (Platform.isIOS) {
+      // iOS reads the Apple Music / media library.
+      perm = Permission.mediaLibrary;
+    } else {
+      // Android: READ_MEDIA_AUDIO on API 33+, READ_EXTERNAL_STORAGE below.
+      int sdkInt = 33;
+      try {
+        sdkInt = await _importChannel.invokeMethod<int>('getSdkInt') ?? 33;
+      } catch (_) {}
+      perm = sdkInt >= 33 ? Permission.audio : Permission.storage;
+    }
     var status = await perm.status;
     if (!status.isGranted) {
       status = await perm.request();
