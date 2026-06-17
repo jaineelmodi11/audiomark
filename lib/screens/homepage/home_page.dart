@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:on_audio_query/on_audio_query.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:file_picker/file_picker.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:songhut/screens/songplayer/song_player.dart';
+import 'package:songhut/services/prefs_service.dart';
+import 'package:songhut/utils/song_color.dart';
 import '../../provider/songModelProvider.dart';
 import 'components/music_tile.dart';
+
+enum _SortMode { nameAsc, recentlyAdded, duration }
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key});
@@ -18,20 +24,79 @@ class _HomePage extends State<MyHomePage> {
   final OnAudioQuery _audioQuery = OnAudioQuery();
   final AudioPlayer _audioPlayer = AudioPlayer();
 
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
+  _SortMode _sort = _SortMode.nameAsc;
+  // Cached so typing in search / changing sort doesn't re-run the query (which
+  // would flash the loading skeleton on every keystroke).
+  late Future<List<SongModel>> _songsFuture;
+
+  Future<List<SongModel>> _querySongs() => _audioQuery.querySongs(
+        sortType: null,
+        orderType: OrderType.ASC_OR_SMALLER,
+        uriType: UriType.EXTERNAL,
+        ignoreCase: true,
+      );
+
+  void _refreshSongs() {
+    setState(() {
+      _songsFuture = _querySongs();
+    });
+  }
+
+  static const _importChannel = MethodChannel('audiomark/import');
+
+  Future<void> _importAudio() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['mp3', 'm4a', 'mp4', 'aac', 'wav'],
+    );
+    if (result == null || result.files.isEmpty) return;
+    final picked = result.files.single;
+    if (picked.path == null) return;
+    try {
+      await _importChannel.invokeMethod('importToMusic', {
+        'path': picked.path,
+        'name': picked.name,
+      });
+      // Let MediaStore finish indexing, then reload the library.
+      await Future.delayed(const Duration(milliseconds: 600));
+      _refreshSongs();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Imported "${picked.name}"')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Couldn't import that file")),
+        );
+      }
+    }
+  }
+
   requestPermission() async {
     if (!kIsWeb) {
       bool permissionStatus = await _audioQuery.permissionsStatus();
       if (!permissionStatus) {
         await _audioQuery.permissionsRequest();
       }
-      setState(() {});
+      _refreshSongs();
     }
   }
 
   @override
   void initState() {
     super.initState();
+    _songsFuture = _querySongs();
     requestPermission();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   void _openPlayer(BuildContext context, List<SongModel> songs, int startIndex) {
@@ -68,58 +133,94 @@ class _HomePage extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('AudioMark')),
+      appBar: AppBar(
+        title: const Text('AudioMark'),
+        actions: [
+          IconButton(
+            tooltip: 'Add music',
+            icon: const Icon(Icons.add_rounded),
+            onPressed: _importAudio,
+          ),
+          PopupMenuButton<_SortMode>(
+            tooltip: 'Sort',
+            icon: const Icon(Icons.sort_rounded),
+            initialValue: _sort,
+            onSelected: (m) => setState(() => _sort = m),
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                  value: _SortMode.nameAsc, child: Text('Name (A–Z)')),
+              PopupMenuItem(
+                  value: _SortMode.recentlyAdded,
+                  child: Text('Recently added')),
+              PopupMenuItem(
+                  value: _SortMode.duration, child: Text('Duration')),
+            ],
+          ),
+        ],
+      ),
       body: FutureBuilder<List<SongModel>>(
-        future: _audioQuery.querySongs(
-          sortType: null,
-          orderType: OrderType.ASC_OR_SMALLER,
-          uriType: UriType.EXTERNAL,
-          ignoreCase: true,
-        ),
+        future: _songsFuture,
         builder: (context, item) {
           if (item.connectionState == ConnectionState.waiting) {
             return const _LoadingSkeleton();
           }
           if (item.hasError) {
-            return _emptyState(
-              context,
-              Icons.error_outline,
-              'Something went wrong while loading your music.',
-            );
+            return _emptyState(context, Icons.error_outline,
+                'Something went wrong while loading your music.');
           }
-
-          final List<SongModel> songs = item.data ?? <SongModel>[];
-          if (songs.isEmpty) {
-            return _emptyState(
-              context,
-              Icons.library_music_outlined,
-              "No songs found on this device.\nMake sure you've granted music access.",
-            );
+          final List<SongModel> all = item.data ?? <SongModel>[];
+          if (all.isEmpty) {
+            return _emptyState(context, Icons.library_music_outlined,
+                "No songs found on this device.\nMake sure you've granted music access.");
           }
-
-          return ListView.separated(
-            itemCount: songs.length,
-            padding: const EdgeInsets.only(bottom: 96),
-            separatorBuilder: (_, __) =>
-                const Divider(height: 1, indent: 80, endIndent: 16),
-            itemBuilder: (context, index) {
-              final song = songs[index];
-              return _FadeSlideIn(
-                index: index,
-                child: MusicTile(
-                  songModel: song,
-                  onTap: () => _openPlayer(context, songs, index),
-                ),
-              );
-            },
+          final List<SongModel> songs = _applySearchAndSort(all);
+          final List<SongModel> recents =
+              _query.isEmpty ? _recentSongs(all) : const [];
+          return Column(
+            children: [
+              _searchField(scheme),
+              Expanded(
+                child: songs.isEmpty
+                    ? _emptyState(context, Icons.search_off_rounded,
+                        'No songs match "$_query".')
+                    : ListView.builder(
+                        padding: const EdgeInsets.only(bottom: 96),
+                        itemCount:
+                            songs.length + (recents.isNotEmpty ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          if (recents.isNotEmpty && index == 0) {
+                            return _recentsStrip(recents, all);
+                          }
+                          final i = recents.isNotEmpty ? index - 1 : index;
+                          final song = songs[i];
+                          return Column(
+                            children: [
+                              _FadeSlideIn(
+                                index: i,
+                                child: MusicTile(
+                                  songModel: song,
+                                  onTap: () =>
+                                      _openPlayer(context, songs, i),
+                                ),
+                              ),
+                              if (i != songs.length - 1)
+                                const Divider(
+                                    height: 1, indent: 80, endIndent: 16),
+                            ],
+                          );
+                        },
+                      ),
+              ),
+            ],
           );
         },
       ),
       floatingActionButton: FutureBuilder<List<SongModel>>(
-        future: _audioQuery.querySongs(uriType: UriType.EXTERNAL),
+        future: _songsFuture,
         builder: (context, snapshot) {
-          final songs = snapshot.data ?? <SongModel>[];
+          final songs = _applySearchAndSort(snapshot.data ?? <SongModel>[]);
           if (songs.isEmpty) return const SizedBox.shrink();
           return FloatingActionButton.extended(
             onPressed: () => _openPlayer(context, songs, 0),
@@ -128,6 +229,144 @@ class _HomePage extends State<MyHomePage> {
           );
         },
       ),
+    );
+  }
+
+  Widget _searchField(ColorScheme scheme) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: TextField(
+        controller: _searchController,
+        onChanged: (v) => setState(() => _query = v),
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          hintText: 'Search songs or artists',
+          prefixIcon: const Icon(Icons.search_rounded),
+          suffixIcon: _query.isEmpty
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  tooltip: 'Clear',
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() => _query = '');
+                    FocusScope.of(context).unfocus();
+                  },
+                ),
+          filled: true,
+          fillColor: scheme.surfaceVariant.withOpacity(0.4),
+          isDense: true,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide.none,
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<SongModel> _applySearchAndSort(List<SongModel> all) {
+    final q = _query.trim().toLowerCase();
+    final list = all.where((s) {
+      if (q.isEmpty) return true;
+      final title = s.displayNameWOExt.toLowerCase();
+      final artist = (s.artist ?? '').toLowerCase();
+      return title.contains(q) || artist.contains(q);
+    }).toList();
+    switch (_sort) {
+      case _SortMode.nameAsc:
+        list.sort((a, b) => a.displayNameWOExt
+            .toLowerCase()
+            .compareTo(b.displayNameWOExt.toLowerCase()));
+        break;
+      case _SortMode.recentlyAdded:
+        list.sort((a, b) => (b.dateAdded ?? 0).compareTo(a.dateAdded ?? 0));
+        break;
+      case _SortMode.duration:
+        list.sort((a, b) => (a.duration ?? 0).compareTo(b.duration ?? 0));
+        break;
+    }
+    return list;
+  }
+
+  List<SongModel> _recentSongs(List<SongModel> all) {
+    final byId = {for (final s in all) s.id: s};
+    return PrefsService.instance.recentIds
+        .map((id) => byId[id])
+        .whereType<SongModel>()
+        .take(10)
+        .toList();
+  }
+
+  Widget _recentsStrip(List<SongModel> recents, List<SongModel> all) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: Text('Recently played',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+        ),
+        SizedBox(
+          height: 140,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: recents.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            itemBuilder: (context, index) {
+              final song = recents[index];
+              return GestureDetector(
+                onTap: () {
+                  final i = all.indexWhere((s) => s.id == song.id);
+                  _openPlayer(context, all, i < 0 ? 0 : i);
+                },
+                child: SizedBox(
+                  width: 96,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: QueryArtworkWidget(
+                          id: song.id,
+                          type: ArtworkType.AUDIO,
+                          artworkHeight: 96,
+                          artworkWidth: 96,
+                          artworkBorder: BorderRadius.circular(14),
+                          artworkFit: BoxFit.cover,
+                          nullArtworkWidget: Container(
+                            height: 96,
+                            width: 96,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: songGradientForId(song.id),
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Icon(Icons.music_note_rounded,
+                                color: Colors.white),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        song.displayNameWOExt,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        const Divider(height: 16),
+      ],
     );
   }
 
