@@ -13,16 +13,20 @@ class AdjustSpeed extends StatefulWidget {
 }
 
 class _AdjustSpeedState extends State<AdjustSpeed> {
+  /// Snap an arbitrary speed to the nearest preset so the dropdown always has
+  /// a matching value.
+  double _nearestPreset(double speed) => list.reduce(
+      (a, b) => (a - speed).abs() < (b - speed).abs() ? a : b);
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    // Snap the player's current speed to the nearest preset so the dropdown
-    // always has a matching value.
-    final double current = list.reduce((a, b) =>
-        (a - widget.audioPlayer.speed).abs() <
-                (b - widget.audioPlayer.speed).abs()
-            ? a
-            : b);
+    // Source the displayed value from the saved preference (read synchronously),
+    // not from audioPlayer.speed which only updates after the async setSpeed()
+    // resolves. This makes the label reflect the selection immediately and show
+    // the restored speed when the player is reopened.
+    final double current =
+        _nearestPreset(PrefsService.instance.getSpeed(widget.songId));
     return DropdownButton<double>(
       iconSize: 0.0,
       value: current,
@@ -35,8 +39,9 @@ class _AdjustSpeedState extends State<AdjustSpeed> {
       ),
       onChanged: (double? value) {
         if (value == null) return;
-        setState(() => widget.audioPlayer.setSpeed(value));
+        widget.audioPlayer.setSpeed(value);
         PrefsService.instance.setSpeed(widget.songId, value);
+        setState(() {}); // rebuild so `current` re-reads the saved value
       },
       items: list.map<DropdownMenuItem<double>>((double value) {
         return DropdownMenuItem<double>(
