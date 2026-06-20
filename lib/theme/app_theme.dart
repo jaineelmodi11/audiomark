@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 
 /// AudioMark brand seed color (salmon/red). All Material 3 color roles are
@@ -31,7 +32,7 @@ class AppTheme {
         ),
       ),
       sliderTheme: SliderThemeData(
-        showValueIndicator: ShowValueIndicator.always,
+        showValueIndicator: ShowValueIndicator.onDrag,
         rangeValueIndicatorShape: const PaddleRangeSliderValueIndicatorShape(),
         trackHeight: 4,
         trackShape: const RoundedRectSliderTrackShape(),

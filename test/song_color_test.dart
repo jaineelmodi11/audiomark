@@ -20,7 +20,7 @@ void main() {
     });
 
     test('returns fully opaque colours', () {
-      expect(songColorForId(123).alpha, 255);
+      expect(songColorForId(123).a, 1.0);
     });
   });
 

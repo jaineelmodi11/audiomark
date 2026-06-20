@@ -333,7 +333,7 @@ class _SongPlayerState extends State<SongPlayer> {
                   (_artColor ??
                           songColorForId(
                               widget.songModelList[currentIndex].id))
-                      .withOpacity(0.5),
+                      .withValues(alpha: 0.5),
                   scheme.surface,
                 ),
                 scheme.surface,
@@ -591,7 +591,7 @@ class ArtWorkWidget extends StatelessWidget {
           borderRadius: const BorderRadius.all(Radius.circular(28)),
           boxShadow: [
             BoxShadow(
-              color: scheme.shadow.withOpacity(0.18),
+              color: scheme.shadow.withValues(alpha: 0.18),
               blurRadius: 28,
               offset: const Offset(0, 12),
             ),

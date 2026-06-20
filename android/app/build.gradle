@@ -31,7 +31,7 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.example.songhut"
-    compileSdk = 34
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -45,8 +45,8 @@ android {
 
     defaultConfig {
         applicationId = "com.ayushshah.audiomark"
-        minSdk = 21
-        targetSdk = 33
+        minSdk = 24
+        targetSdk = 34
         versionCode = flutterVersionCode.toInteger()
         versionName = flutterVersionName
     }

@@ -53,7 +53,7 @@ class _HomePage extends State<MyHomePage> {
   static const _importChannel = MethodChannel('audiomark/import');
 
   Future<void> _importAudio() async {
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['mp3', 'm4a', 'mp4', 'aac', 'wav'],
     );
@@ -292,7 +292,7 @@ class _HomePage extends State<MyHomePage> {
                   },
                 ),
           filled: true,
-          fillColor: scheme.surfaceContainerHighest.withOpacity(0.4),
+          fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
           isDense: true,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),

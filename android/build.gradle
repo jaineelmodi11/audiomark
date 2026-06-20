@@ -26,11 +26,19 @@ subprojects {
                         }
                     }
                 }
-                // Align Java target with Kotlin's (some old plugins leave Java
-                // at 1.8 while Kotlin defaults to 17 under JDK 17 → mismatch).
+                // Align Java target across plugins.
                 androidExt.compileOptions {
                     sourceCompatibility JavaVersion.VERSION_17
                     targetCompatibility JavaVersion.VERSION_17
+                }
+            }
+            // Force Kotlin's jvmTarget to 17 to match Java. Some plugins pin it
+            // lower (e.g. audio_session uses 11) → "Inconsistent JVM-target"
+            // failures. Detect Kotlin tasks by class name to avoid needing the
+            // Kotlin Gradle plugin on the root build script's classpath.
+            project.tasks.configureEach { task ->
+                if (task.class.name.contains("KotlinCompile")) {
+                    task.kotlinOptions { jvmTarget = "17" }
                 }
             }
         }
