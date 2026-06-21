@@ -50,6 +50,7 @@ dependencies:
   # own documents directory.
   path_provider: ^2.1.4
   path: ^1.9.0
+  just_audio_background: ^0.0.1-beta.17
 
   
 
@@ -91,6 +92,7 @@ flutter:
   # To add assets to your application, add an assets section, like this:
   assets:
       - lib/assets/AudioMarkSplashScreen.png
+      - lib/assets/beep.wav
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see

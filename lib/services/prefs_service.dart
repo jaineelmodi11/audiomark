@@ -63,4 +63,11 @@ class PrefsService {
     await _prefs.setInt('loopStart_$id', startSec);
     await _prefs.setInt('loopEnd_$id', endSec);
   }
+
+  // ---- Count-in (global): 3 beeps before playback starts --------------------
+
+  bool get countInEnabled => _prefs.getBool('count_in') ?? false;
+
+  Future<void> setCountInEnabled(bool value) =>
+      _prefs.setBool('count_in', value);
 }

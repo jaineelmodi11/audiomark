@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 import 'package:provider/provider.dart';
 import 'package:songhut/provider/song_model_provider.dart';
 import 'package:songhut/screens/splash_screen.dart';
@@ -31,6 +32,18 @@ void main() {
     };
 
     await PrefsService.instance.init();
+    // Enable background audio + lock-screen / notification controls so dancers
+    // can put the phone down and keep practising.
+    try {
+      await JustAudioBackground.init(
+        androidNotificationChannelId: 'com.ayushshah.audiomark.channel.audio',
+        androidNotificationChannelName: 'AudioMark playback',
+        androidNotificationOngoing: true,
+      );
+    } catch (error, stack) {
+      // Non-fatal: fall back to foreground-only playback.
+      reportError(error, stack);
+    }
     // Draw behind the status/navigation bars for a seamless, edge-to-edge feel.
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(

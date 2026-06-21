@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 import 'package:on_audio_query/on_audio_query.dart';
 import 'package:provider/provider.dart';
 import 'package:songhut/screens/songplayer/components/adjust_speed_button.dart';
@@ -49,6 +50,11 @@ class _SongPlayerState extends State<SongPlayer> {
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<PlayerState>? _playerStateSub;
   StreamSubscription<int?>? _currentIndexSub;
+
+  // Count-in (opt-in): a dedicated player for the 3 beeps + UI state.
+  final AudioPlayer _beepPlayer = AudioPlayer();
+  bool _isCountingIn = false;
+  int _countInValue = 0;
 
   /// Dominant colour of the current song's album art, used to tint the player
   /// background. Null when the song has no embedded artwork.
@@ -139,7 +145,30 @@ class _SongPlayerState extends State<SongPlayer> {
   void initState() {
     super.initState();
     currentIndex = widget.initialIndex;
+    _beepPlayer.setAsset('lib/assets/beep.wav').catchError((_) => null);
     parseSong();
+  }
+
+  /// Plays 3 beeps (~0.5s apart) and starts playback on the third — a count-in
+  /// for dancers, gated behind the global toggle.
+  Future<void> _countInThenPlay() async {
+    setState(() => _isCountingIn = true);
+    for (int n = 3; n >= 1; n--) {
+      if (!mounted) return;
+      setState(() => _countInValue = n);
+      try {
+        await _beepPlayer.seek(Duration.zero);
+        _beepPlayer.play();
+      } catch (_) {}
+      if (n > 1) await Future.delayed(const Duration(milliseconds: 500));
+    }
+    if (!mounted) return;
+    setState(() {
+      _isCountingIn = false;
+      _countInValue = 0;
+      _isPlaying = true;
+    });
+    playAudio();
   }
 
   @override
@@ -148,15 +177,26 @@ class _SongPlayerState extends State<SongPlayer> {
     _positionSub?.cancel();
     _playerStateSub?.cancel();
     _currentIndexSub?.cancel();
+    _beepPlayer.dispose();
     super.dispose();
   }
 
   void parseSong() async {
     try {
       for (var element in widget.songModelList) {
+        final artist = element.artist;
         songList.add(
           AudioSource.uri(
             Uri.parse(element.uri!),
+            // Tag drives the lock-screen / notification controls.
+            tag: MediaItem(
+              id: element.id.toString(),
+              title: element.displayNameWOExt,
+              artist: (artist == null || artist == '<unknown>')
+                  ? 'Unknown Artist'
+                  : artist,
+              album: 'AudioMark',
+            ),
           ),
         );
       }
@@ -514,19 +554,20 @@ class _SongPlayerState extends State<SongPlayer> {
                         IconButton(
                           iconSize: 60,
                           onPressed: () {
+                            if (_isCountingIn) return;
                             HapticFeedback.lightImpact();
-                            setState(() {
-                              if (_isPlaying) {
-                                widget.audioPlayer.pause();
-                              } else {
-                                if (_position >= _duration) {
-                                  seekToSeconds(0);
-                                } else {
-                                  playAudio();
-                                }
-                              }
-                              _isPlaying = !_isPlaying;
-                            });
+                            if (_isPlaying) {
+                              widget.audioPlayer.pause();
+                              setState(() => _isPlaying = false);
+                              return;
+                            }
+                            if (_position >= _duration) seekToSeconds(0);
+                            if (PrefsService.instance.countInEnabled) {
+                              _countInThenPlay();
+                            } else {
+                              playAudio();
+                              setState(() => _isPlaying = true);
+                            }
                           },
                           icon: CircleAvatar(
                             radius: 32,
@@ -535,14 +576,24 @@ class _SongPlayerState extends State<SongPlayer> {
                               duration: const Duration(milliseconds: 220),
                               transitionBuilder: (child, anim) =>
                                   ScaleTransition(scale: anim, child: child),
-                              child: Icon(
-                                _isPlaying
-                                    ? Icons.pause_rounded
-                                    : Icons.play_arrow_rounded,
-                                key: ValueKey<bool>(_isPlaying),
-                                color: scheme.onPrimary,
-                                size: 32.0,
-                              ),
+                              child: _isCountingIn
+                                  ? Text(
+                                      '$_countInValue',
+                                      key: ValueKey<int>(_countInValue),
+                                      style: TextStyle(
+                                        color: scheme.onPrimary,
+                                        fontSize: 30,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    )
+                                  : Icon(
+                                      _isPlaying
+                                          ? Icons.pause_rounded
+                                          : Icons.play_arrow_rounded,
+                                      key: ValueKey<bool>(_isPlaying),
+                                      color: scheme.onPrimary,
+                                      size: 32.0,
+                                    ),
                             ),
                           ),
                         ),
@@ -576,6 +627,20 @@ class _SongPlayerState extends State<SongPlayer> {
                             audioPlayer: widget.audioPlayer,
                             songId: widget.songModelList[currentIndex].id),
                         LoopButton(audioPlayer: widget.audioPlayer),
+                        IconButton(
+                          tooltip: 'Count-in (3 beeps before play)',
+                          onPressed: () {
+                            PrefsService.instance.setCountInEnabled(
+                                !PrefsService.instance.countInEnabled);
+                            setState(() {});
+                          },
+                          icon: Icon(
+                            Icons.av_timer_rounded,
+                            color: PrefsService.instance.countInEnabled
+                                ? scheme.primary
+                                : scheme.onSurfaceVariant,
+                          ),
+                        ),
                       ],
                     )
                   ],
