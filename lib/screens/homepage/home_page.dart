@@ -169,7 +169,10 @@ class _HomePage extends State<MyHomePage> {
           );
         },
       ),
-    );
+    ).then((_) {
+      // Refresh on return so "Recently played" reflects the track just played.
+      if (mounted) setState(() {});
+    });
   }
 
   @override

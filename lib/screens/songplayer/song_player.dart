@@ -38,6 +38,10 @@ class _SongPlayerState extends State<SongPlayer> {
   List<AudioSource> songList = [];
 
   int currentIndex = 0;
+  // just_audio replays a transient/stale index while setAudioSource applies
+  // initialIndex. Stays false until the stream settles on the opened song, so
+  // setup emissions don't pollute "recently played".
+  bool _indexSettled = false;
   RangeValues _currentRangeValues = const RangeValues(0.0, 0.0);
   RangeLabels _currentRangeLabels = const RangeLabels("0", "0");
 
@@ -241,6 +245,16 @@ class _SongPlayerState extends State<SongPlayer> {
         // audio source resets it. Ignore indices outside our list to avoid a
         // RangeError when the player was opened with a single song.
         if (event == null || event < 0 || event >= widget.songModelList.length) {
+          return;
+        }
+        // Ignore setup/stale emissions until we land on the opened song (which
+        // _recordAndRestore already recorded). This prevents the library's
+        // first track being logged as "recent" when you open a later one.
+        if (!_indexSettled) {
+          if (event == widget.initialIndex) {
+            _indexSettled = true;
+            _loadArtColor();
+          }
           return;
         }
         setState(
