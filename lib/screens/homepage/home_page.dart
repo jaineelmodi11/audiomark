@@ -10,6 +10,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:songhut/screens/songplayer/song_player.dart';
 import 'package:songhut/services/prefs_service.dart';
+import 'package:songhut/services/imported_library.dart';
 import 'package:songhut/utils/song_color.dart';
 import '../../provider/song_model_provider.dart';
 import 'components/music_tile.dart';
@@ -24,7 +25,10 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _HomePage extends State<MyHomePage> {
-  final OnAudioQuery _audioQuery = OnAudioQuery();
+  // Lazy + only accessed on Android — instantiating on_audio_query on iOS
+  // triggers an (unwanted) Apple Music / media-library permission prompt, and
+  // iOS uses the app-managed ImportedLibrary instead.
+  late final OnAudioQuery _audioQuery = OnAudioQuery();
   final AudioPlayer _audioPlayer = AudioPlayer();
 
   final TextEditingController _searchController = TextEditingController();
@@ -36,12 +40,16 @@ class _HomePage extends State<MyHomePage> {
   // would flash the loading skeleton on every keystroke).
   late Future<List<SongModel>> _songsFuture;
 
-  Future<List<SongModel>> _querySongs() => _audioQuery.querySongs(
-        sortType: null,
-        orderType: OrderType.ASC_OR_SMALLER,
-        uriType: UriType.EXTERNAL,
-        ignoreCase: true,
-      );
+  Future<List<SongModel>> _querySongs() {
+    // iOS has no shared MediaStore; serve the app-managed imported library.
+    if (Platform.isIOS) return ImportedLibrary.instance.songs();
+    return _audioQuery.querySongs(
+      sortType: null,
+      orderType: OrderType.ASC_OR_SMALLER,
+      uriType: UriType.EXTERNAL,
+      ignoreCase: true,
+    );
+  }
 
   void _refreshSongs() {
     if (!_hasPermission) return; // never query on_audio_query without access
@@ -61,13 +69,19 @@ class _HomePage extends State<MyHomePage> {
     final picked = result.files.single;
     if (picked.path == null) return;
     try {
-      await _importChannel.invokeMethod('importToMusic', {
-        'path': picked.path,
-        'name': picked.name,
-      });
-      // Let MediaStore finish indexing, then reload the library.
-      await Future.delayed(const Duration(milliseconds: 600));
-      _refreshSongs();
+      if (Platform.isIOS) {
+        // iOS: copy into the app's own library (no MediaStore).
+        await ImportedLibrary.instance.importFile(picked.path!, picked.name);
+        _refreshSongs();
+      } else {
+        await _importChannel.invokeMethod('importToMusic', {
+          'path': picked.path,
+          'name': picked.name,
+        });
+        // Let MediaStore finish indexing, then reload the library.
+        await Future.delayed(const Duration(milliseconds: 600));
+        _refreshSongs();
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Imported "${picked.name}"')),
@@ -83,24 +97,23 @@ class _HomePage extends State<MyHomePage> {
   }
 
   Future<void> requestPermission() async {
-    if (kIsWeb) {
+    // Web and iOS aren't gated on a system permission: web has no native
+    // library, and iOS serves an app-managed imported library from the app's
+    // own sandbox (no Apple Music / media-library access needed).
+    if (kIsWeb || Platform.isIOS) {
       setState(() => _hasPermission = true);
+      _refreshSongs();
       return;
     }
-    // Handle the permission ourselves with permission_handler — on_audio_query
-    // 2.9.0's own request path crashes on Android 13.
-    final Permission perm;
-    if (Platform.isIOS) {
-      // iOS reads the Apple Music / media library.
-      perm = Permission.mediaLibrary;
-    } else {
-      // Android: READ_MEDIA_AUDIO on API 33+, READ_EXTERNAL_STORAGE below.
-      int sdkInt = 33;
-      try {
-        sdkInt = await _importChannel.invokeMethod<int>('getSdkInt') ?? 33;
-      } catch (_) {}
-      perm = sdkInt >= 33 ? Permission.audio : Permission.storage;
-    }
+    // Android: handle the permission ourselves with permission_handler —
+    // on_audio_query 2.9.0's own request path crashes on Android 13.
+    // READ_MEDIA_AUDIO on API 33+, READ_EXTERNAL_STORAGE below.
+    int sdkInt = 33;
+    try {
+      sdkInt = await _importChannel.invokeMethod<int>('getSdkInt') ?? 33;
+    } catch (_) {}
+    final Permission perm =
+        sdkInt >= 33 ? Permission.audio : Permission.storage;
     var status = await perm.status;
     if (!status.isGranted) {
       status = await perm.request();
@@ -204,8 +217,13 @@ class _HomePage extends State<MyHomePage> {
           }
           final List<SongModel> all = item.data ?? <SongModel>[];
           if (all.isEmpty) {
-            return _emptyState(context, Icons.library_music_outlined,
-                "No songs found on this device.\nMake sure you've granted music access.");
+            // iOS builds its own library from imported files; Android reads the
+            // device's media store.
+            final emptyMessage = Platform.isIOS
+                ? "No songs yet.\nTap + to import your audio."
+                : "No songs found on this device.\nMake sure you've granted music access.";
+            return _emptyState(
+                context, Icons.library_music_outlined, emptyMessage);
           }
           final List<SongModel> songs = _applySearchAndSort(all);
           final List<SongModel> recents =

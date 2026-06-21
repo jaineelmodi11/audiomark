@@ -46,6 +46,10 @@ dependencies:
   shared_preferences: ^2.2.0
   file_picker: ^11.0.2
   permission_handler: ^12.0.3
+  # iOS has no shared MediaStore, so imported files are managed in the app's
+  # own documents directory.
+  path_provider: ^2.1.4
+  path: ^1.9.0
 
   
 
