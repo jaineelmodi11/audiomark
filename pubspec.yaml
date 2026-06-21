@@ -62,18 +62,12 @@ dev_dependencies:
 
 flutter_icons:
   android: true
-  ios: false
+  ios: true
+  # iOS icons must be opaque (no alpha) — fill transparency with the brand colour.
+  remove_alpha_ios: true
+  background_color_ios: "#DF6060"
   image_path: "assets/applogo.png"
   min_sdk_android: 21 # android min sdk min:16, default 21
-  web:
-    generate: true
-    image_path: "path/to/image.png"
-    background_color: "#hexcode"
-    theme_color: "#hexcode"
-  windows:
-    generate: true
-    image_path: "path/to/image.png"
-    icon_size: 48 # min:48, max:256, default: 48
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
