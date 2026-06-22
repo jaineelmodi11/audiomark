@@ -56,6 +56,10 @@ class _SongPlayerState extends State<SongPlayer> {
   bool _isCountingIn = false;
   int _countInValue = 0;
 
+  // 8-count display synced to playback (when a per-song tempo is set).
+  Timer? _beatTimer;
+  int _currentBeat = 0;
+
   /// Dominant colour of the current song's album art, used to tint the player
   /// background. Null when the song has no embedded artwork.
   Color? _artColor;
@@ -147,6 +151,195 @@ class _SongPlayerState extends State<SongPlayer> {
     currentIndex = widget.initialIndex;
     _beepPlayer.setAsset('lib/assets/beep.wav').catchError((_) => null);
     parseSong();
+    // Refresh the 8-count display smoothly from the live playback position.
+    _beatTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
+      if (!mounted) return;
+      final b = _computeBeat();
+      if (b != _currentBeat) setState(() => _currentBeat = b);
+    });
+  }
+
+  /// Current 8-count (1..8) from the live playback position + saved tempo, or
+  /// 0 when no tempo is set for this song.
+  int _computeBeat() {
+    final id = widget.songModelList[currentIndex].id;
+    final bpm = PrefsService.instance.getBpm(id);
+    if (bpm <= 0) return 0;
+    final anchor = PrefsService.instance.getBeatAnchorMs(id);
+    final beatMs = 60000.0 / bpm;
+    final beats =
+        ((widget.audioPlayer.position.inMilliseconds - anchor) / beatMs)
+            .floor();
+    return ((beats % 8) + 8) % 8 + 1;
+  }
+
+  /// Tap-along sheet: each tap records the live playback position; BPM comes
+  /// from the average gap and the first tap marks the downbeat ("1").
+  void _openTapTempo() {
+    final id = widget.songModelList[currentIndex].id;
+    final positions = <int>[];
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      showDragHandle: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) {
+          final scheme = Theme.of(ctx).colorScheme;
+          double? bpm;
+          if (positions.length >= 2) {
+            final deltas = <int>[];
+            for (int i = 1; i < positions.length; i++) {
+              final d = positions[i] - positions[i - 1];
+              if (d > 0) deltas.add(d);
+            }
+            if (deltas.isNotEmpty) {
+              final avg = deltas.reduce((a, b) => a + b) / deltas.length;
+              if (avg > 200 && avg < 2000) bpm = 60000 / avg;
+            }
+          }
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Tap the tempo',
+                    style: TextStyle(
+                        color: scheme.onSurface,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                Text('Play the song and tap each beat, starting on the “1”.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        color: scheme.onSurfaceVariant, fontSize: 12)),
+                const SizedBox(height: 14),
+                Text(bpm != null ? '${bpm.round()} BPM' : '— BPM',
+                    style: TextStyle(
+                        color: scheme.primary,
+                        fontSize: 30,
+                        fontWeight: FontWeight.bold)),
+                const SizedBox(height: 12),
+                GestureDetector(
+                  onTap: () {
+                    positions.add(widget.audioPlayer.position.inMilliseconds);
+                    HapticFeedback.selectionClick();
+                    setSheet(() {});
+                  },
+                  child: Container(
+                    height: 92,
+                    decoration: BoxDecoration(
+                      color: scheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text('TAP',
+                        style: TextStyle(
+                            color: scheme.onPrimaryContainer,
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 2)),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text('${positions.length} taps',
+                    style: TextStyle(
+                        color: scheme.onSurfaceVariant, fontSize: 12)),
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    TextButton(
+                      onPressed: () {
+                        PrefsService.instance.clearTempo(id);
+                        setState(() => _currentBeat = 0);
+                        Navigator.pop(ctx);
+                      },
+                      child: const Text('Clear'),
+                    ),
+                    Row(
+                      children: [
+                        TextButton(
+                          onPressed: positions.isEmpty
+                              ? null
+                              : () {
+                                  positions.clear();
+                                  setSheet(() {});
+                                },
+                          child: const Text('Reset'),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton(
+                          onPressed: bpm == null
+                              ? null
+                              : () {
+                                  PrefsService.instance
+                                      .setTempo(id, bpm!, positions.first);
+                                  setState(() {});
+                                  Navigator.pop(ctx);
+                                },
+                          child: const Text('Save'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// The 1-8 count strip (when a tempo is set) or a "tap tempo" prompt.
+  Widget _buildBeatCounter(ColorScheme scheme) {
+    final bpm = PrefsService.instance.getBpm(widget.songModelList[currentIndex].id);
+    if (bpm <= 0) {
+      return Center(
+        child: TextButton.icon(
+          onPressed: _openTapTempo,
+          icon: const Icon(Icons.touch_app_outlined, size: 18),
+          label: const Text('Tap tempo · 8-count'),
+        ),
+      );
+    }
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(8, (i) {
+            final n = i + 1;
+            final active = n == _currentBeat;
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 3),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 90),
+                width: active ? 30 : 24,
+                height: active ? 30 : 24,
+                decoration: BoxDecoration(
+                  color:
+                      active ? scheme.primary : scheme.surfaceContainerHighest,
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: Text('$n',
+                    style: TextStyle(
+                        color:
+                            active ? scheme.onPrimary : scheme.onSurfaceVariant,
+                        fontWeight: FontWeight.bold,
+                        fontSize: active ? 14 : 12)),
+              ),
+            );
+          }),
+        ),
+        const SizedBox(height: 4),
+        GestureDetector(
+          onTap: _openTapTempo,
+          child: Text('${bpm.round()} BPM · tap to adjust',
+              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 11)),
+        ),
+      ],
+    );
   }
 
   /// Plays 3 beeps (~0.5s apart) and starts playback on the third — a count-in
@@ -177,6 +370,7 @@ class _SongPlayerState extends State<SongPlayer> {
     _positionSub?.cancel();
     _playerStateSub?.cancel();
     _currentIndexSub?.cancel();
+    _beatTimer?.cancel();
     _beepPlayer.dispose();
     super.dispose();
   }
@@ -528,9 +722,9 @@ class _SongPlayerState extends State<SongPlayer> {
                         Text(_formatTime(_duration)),
                       ],
                     ),
-                    const SizedBox(
-                      height: 20.0,
-                    ),
+                    const SizedBox(height: 14.0),
+                    _buildBeatCounter(scheme),
+                    const SizedBox(height: 14.0),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [

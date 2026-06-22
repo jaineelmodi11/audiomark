@@ -70,4 +70,23 @@ class PrefsService {
 
   Future<void> setCountInEnabled(bool value) =>
       _prefs.setBool('count_in', value);
+
+  // ---- Per-song tempo for the 8-count display -------------------------------
+
+  /// Beats per minute, or 0 when the tempo hasn't been set for this song.
+  double getBpm(int id) => _prefs.getDouble('bpm_$id') ?? 0;
+
+  /// Playback position (ms) of the downbeat — where the "1" of the 8-count
+  /// falls — so counts line up with the music.
+  int getBeatAnchorMs(int id) => _prefs.getInt('beatAnchor_$id') ?? 0;
+
+  Future<void> setTempo(int id, double bpm, int anchorMs) async {
+    await _prefs.setDouble('bpm_$id', bpm);
+    await _prefs.setInt('beatAnchor_$id', anchorMs);
+  }
+
+  Future<void> clearTempo(int id) async {
+    await _prefs.remove('bpm_$id');
+    await _prefs.remove('beatAnchor_$id');
+  }
 }
