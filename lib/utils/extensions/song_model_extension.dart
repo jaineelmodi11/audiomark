@@ -1,7 +1,7 @@
 import 'package:on_audio_query/on_audio_query.dart';
 
 extension ExtendedSongModel on SongModel {
-  get additionalSongInfo {
+  String get additionalSongInfo {
     String artistInfo = artist.toString();
     String songTime = _millisToMinutesAndSeconds(duration);
     String artistName =
@@ -9,9 +9,10 @@ extension ExtendedSongModel on SongModel {
     return "$artistName\t\t$songTime";
   }
 
-  _millisToMinutesAndSeconds(millis) {
-    int minutes = ((millis / 1000) / 60).toInt();
-    int seconds = ((millis / 1000) % 60).toInt();
+  String _millisToMinutesAndSeconds(int? millis) {
+    final ms = millis ?? 0;
+    int minutes = ((ms / 1000) / 60).toInt();
+    int seconds = ((ms / 1000) % 60).toInt();
     return "$minutes:$seconds";
   }
 }

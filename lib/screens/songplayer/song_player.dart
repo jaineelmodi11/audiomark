@@ -403,7 +403,11 @@ class _SongPlayerState extends State<SongPlayer> {
           ),
         );
       }
+      // ConcatenatingAudioSource is deprecated in just_audio 0.10 (use
+      // setAudioSources); migration deferred — the shared-player queue/index
+      // logic here is verified working and sensitive to change.
       widget.audioPlayer.setAudioSource(
+        // ignore: deprecated_member_use
         ConcatenatingAudioSource(children: songList),
         initialIndex: widget.initialIndex,
       );
@@ -859,8 +863,8 @@ class _SongPlayerState extends State<SongPlayer> {
 
 class ArtWorkWidget extends StatelessWidget {
   const ArtWorkWidget({
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {
