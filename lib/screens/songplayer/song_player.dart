@@ -177,7 +177,8 @@ class _SongPlayerState extends State<SongPlayer> {
   /// from the average gap and the first tap marks the downbeat ("1").
   void _openTapTempo() {
     final id = widget.songModelList[currentIndex].id;
-    final positions = <int>[];
+    final taps = <int>[]; // wall-clock ms per tap
+    int? anchorPos; // playback position (ms) at the first tap = the downbeat
     showModalBottomSheet(
       context: context,
       backgroundColor: Theme.of(context).colorScheme.surface,
@@ -186,15 +187,21 @@ class _SongPlayerState extends State<SongPlayer> {
         builder: (ctx, setSheet) {
           final scheme = Theme.of(ctx).colorScheme;
           double? bpm;
-          if (positions.length >= 2) {
+          if (taps.length >= 2) {
             final deltas = <int>[];
-            for (int i = 1; i < positions.length; i++) {
-              final d = positions[i] - positions[i - 1];
+            for (int i = 1; i < taps.length; i++) {
+              final d = taps[i] - taps[i - 1];
               if (d > 0) deltas.add(d);
             }
             if (deltas.isNotEmpty) {
               final avg = deltas.reduce((a, b) => a + b) / deltas.length;
-              if (avg > 200 && avg < 2000) bpm = 60000 / avg;
+              // Tap intervals are wall-clock; convert to song-time so the count
+              // lines up even if tapped while slowed down.
+              final speed = widget.audioPlayer.speed <= 0
+                  ? 1.0
+                  : widget.audioPlayer.speed;
+              final songBpm = (60000 / avg) / speed;
+              if (songBpm > 30 && songBpm < 300) bpm = songBpm;
             }
           }
           return Padding(
@@ -221,7 +228,8 @@ class _SongPlayerState extends State<SongPlayer> {
                 const SizedBox(height: 12),
                 GestureDetector(
                   onTap: () {
-                    positions.add(widget.audioPlayer.position.inMilliseconds);
+                    anchorPos ??= widget.audioPlayer.position.inMilliseconds;
+                    taps.add(DateTime.now().millisecondsSinceEpoch);
                     HapticFeedback.selectionClick();
                     setSheet(() {});
                   },
@@ -241,7 +249,7 @@ class _SongPlayerState extends State<SongPlayer> {
                   ),
                 ),
                 const SizedBox(height: 6),
-                Text('${positions.length} taps',
+                Text('${taps.length} taps',
                     style: TextStyle(
                         color: scheme.onSurfaceVariant, fontSize: 12)),
                 const SizedBox(height: 10),
@@ -259,10 +267,11 @@ class _SongPlayerState extends State<SongPlayer> {
                     Row(
                       children: [
                         TextButton(
-                          onPressed: positions.isEmpty
+                          onPressed: taps.isEmpty
                               ? null
                               : () {
-                                  positions.clear();
+                                  taps.clear();
+                                  anchorPos = null;
                                   setSheet(() {});
                                 },
                           child: const Text('Reset'),
@@ -273,7 +282,7 @@ class _SongPlayerState extends State<SongPlayer> {
                               ? null
                               : () {
                                   PrefsService.instance
-                                      .setTempo(id, bpm!, positions.first);
+                                      .setTempo(id, bpm!, anchorPos ?? 0);
                                   setState(() {});
                                   Navigator.pop(ctx);
                                 },
