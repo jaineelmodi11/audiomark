@@ -1,18 +1,19 @@
 import 'dart:async';
 import 'dart:io' show Platform;
+import 'dart:math' show Random;
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
 import 'package:on_audio_query/on_audio_query.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:file_picker/file_picker.dart';
-import 'package:just_audio/just_audio.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:songhut/screens/homepage/components/mini_player.dart';
+import 'package:songhut/screens/settings/settings_screen.dart';
 import 'package:songhut/screens/songplayer/song_player.dart';
-import 'package:songhut/services/prefs_service.dart';
 import 'package:songhut/services/imported_library.dart';
+import 'package:songhut/services/prefs_service.dart';
 import 'package:songhut/utils/song_color.dart';
-import '../../provider/song_model_provider.dart';
 import 'components/music_tile.dart';
 
 enum _SortMode { nameAsc, recentlyAdded, duration }
@@ -29,12 +30,12 @@ class _HomePage extends State<MyHomePage> {
   // triggers an (unwanted) Apple Music / media-library permission prompt, and
   // iOS uses the app-managed ImportedLibrary instead.
   late final OnAudioQuery _audioQuery = OnAudioQuery();
-  final AudioPlayer _audioPlayer = AudioPlayer();
 
   final TextEditingController _searchController = TextEditingController();
   Timer? _searchDebounce;
   String _query = '';
   _SortMode _sort = _SortMode.nameAsc;
+  bool _favoritesOnly = false;
   bool _hasPermission = false;
   // Cached so typing in search / changing sort doesn't re-run the query (which
   // would flash the loading skeleton on every keystroke).
@@ -140,36 +141,11 @@ class _HomePage extends State<MyHomePage> {
     super.dispose();
   }
 
-  void _openPlayer(BuildContext context, List<SongModel> songs, int startIndex) {
-    // Always open within the full library so previous/next/shuffle are
-    // meaningful, starting from the tapped song.
-    context.read<SongModelProvider>().setId(songs[startIndex].id);
-    Navigator.push(
-      context,
-      PageRouteBuilder(
-        transitionDuration: const Duration(milliseconds: 350),
-        reverseTransitionDuration: const Duration(milliseconds: 300),
-        pageBuilder: (_, __, ___) => SongPlayer(
-          songModelList: songs,
-          audioPlayer: _audioPlayer,
-          initialIndex: startIndex,
-        ),
-        transitionsBuilder: (_, animation, __, child) {
-          final curved = CurvedAnimation(
-            parent: animation,
-            curve: Curves.easeOutCubic,
-            reverseCurve: Curves.easeInCubic,
-          );
-          return SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0, 1),
-              end: Offset.zero,
-            ).animate(curved),
-            child: FadeTransition(opacity: curved, child: child),
-          );
-        },
-      ),
-    ).then((_) {
+  void _openPlayer(List<SongModel> songs, int startIndex,
+      {bool shuffle = false}) {
+    openSongPlayer(context,
+            songs: songs, index: startIndex, shuffle: shuffle)
+        .then((_) {
       // Refresh on return so "Recently played" reflects the track just played.
       if (mounted) setState(() {});
     });
@@ -179,106 +155,135 @@ class _HomePage extends State<MyHomePage> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('AudioMark'),
-        actions: !_hasPermission
-            ? const <Widget>[]
-            : [
-          IconButton(
-            tooltip: 'Add music',
-            icon: const Icon(Icons.add_rounded),
-            onPressed: _importAudio,
-          ),
-          PopupMenuButton<_SortMode>(
-            tooltip: 'Sort',
-            icon: const Icon(Icons.sort_rounded),
-            initialValue: _sort,
-            onSelected: (m) => setState(() => _sort = m),
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                  value: _SortMode.nameAsc, child: Text('Name (A–Z)')),
-              PopupMenuItem(
-                  value: _SortMode.recentlyAdded,
-                  child: Text('Recently added')),
-              PopupMenuItem(
-                  value: _SortMode.duration, child: Text('Duration')),
-            ],
-          ),
-        ],
-      ),
-      body: !_hasPermission
-          ? _permissionState(context)
-          : FutureBuilder<List<SongModel>>(
+      bottomNavigationBar: const MiniPlayer(),
+      body: FutureBuilder<List<SongModel>>(
         future: _songsFuture,
         builder: (context, item) {
-          if (item.connectionState == ConnectionState.waiting) {
-            return const _LoadingSkeleton();
-          }
-          if (item.hasError) {
-            return _emptyState(context, Icons.error_outline,
-                'Something went wrong while loading your music.');
-          }
           final List<SongModel> all = item.data ?? <SongModel>[];
-          if (all.isEmpty) {
-            // iOS builds its own library from imported files; Android reads the
-            // device's media store.
-            final emptyMessage = Platform.isIOS
-                ? "No songs yet.\nTap + to import your audio."
-                : "No songs found on this device.\nMake sure you've granted music access.";
-            return _emptyState(
-                context, Icons.library_music_outlined, emptyMessage);
-          }
-          final List<SongModel> songs = _applySearchAndSort(all);
-          final List<SongModel> recents =
-              _query.isEmpty ? _recentSongs(all) : const [];
-          return Column(
-            children: [
-              _searchField(scheme),
-              Expanded(
-                child: songs.isEmpty
-                    ? _emptyState(context, Icons.search_off_rounded,
-                        'No songs match "$_query".')
-                    : ListView.builder(
-                        padding: const EdgeInsets.only(bottom: 96),
-                        itemCount:
-                            songs.length + (recents.isNotEmpty ? 1 : 0),
-                        itemBuilder: (context, index) {
-                          if (recents.isNotEmpty && index == 0) {
-                            return _recentsStrip(recents, all);
-                          }
-                          final i = recents.isNotEmpty ? index - 1 : index;
-                          final song = songs[i];
-                          return Column(
-                            children: [
-                              _FadeSlideIn(
-                                index: i,
-                                child: MusicTile(
-                                  songModel: song,
-                                  onTap: () =>
-                                      _openPlayer(context, songs, i),
-                                ),
-                              ),
-                              if (i != songs.length - 1)
-                                const Divider(
-                                    height: 1, indent: 80, endIndent: 16),
-                            ],
-                          );
-                        },
-                      ),
+          final bool loading =
+              item.connectionState == ConnectionState.waiting;
+          final List<SongModel> songs = _applyFilters(all);
+          final List<SongModel> recents = (_query.isEmpty && !_favoritesOnly)
+              ? _recentSongs(all)
+              : const [];
+
+          return CustomScrollView(
+            slivers: [
+              SliverAppBar.large(
+                title: const Text('AudioMark'),
+                actions: !_hasPermission
+                    ? const <Widget>[]
+                    : [
+                        IconButton(
+                          tooltip: 'Add music',
+                          icon: const Icon(Icons.add_rounded),
+                          onPressed: _importAudio,
+                        ),
+                        PopupMenuButton<_SortMode>(
+                          tooltip: 'Sort',
+                          icon: const Icon(Icons.sort_rounded),
+                          initialValue: _sort,
+                          onSelected: (m) => setState(() => _sort = m),
+                          itemBuilder: (context) => const [
+                            PopupMenuItem(
+                                value: _SortMode.nameAsc,
+                                child: Text('Name (A–Z)')),
+                            PopupMenuItem(
+                                value: _SortMode.recentlyAdded,
+                                child: Text('Recently added')),
+                            PopupMenuItem(
+                                value: _SortMode.duration,
+                                child: Text('Duration')),
+                          ],
+                        ),
+                        IconButton(
+                          tooltip: 'Settings',
+                          icon: const Icon(Icons.settings_outlined),
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const SettingsScreen()),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
               ),
+              if (!_hasPermission)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: _permissionState(context),
+                )
+              else if (loading)
+                const SliverFillRemaining(child: _LoadingSkeleton())
+              else if (item.hasError)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: _emptyState(context, Icons.error_outline,
+                      'Something went wrong while loading your music.'),
+                )
+              else if (all.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: _emptyState(
+                    context,
+                    Icons.library_music_outlined,
+                    Platform.isIOS
+                        ? "No songs yet.\nTap + to import your audio."
+                        : "No songs found on this device.\nMake sure you've granted music access.",
+                    actionLabel: 'Import audio',
+                    onAction: _importAudio,
+                  ),
+                )
+              else ...[
+                SliverToBoxAdapter(child: _searchField(scheme)),
+                if (recents.isNotEmpty)
+                  SliverToBoxAdapter(child: _recentsStrip(recents, all)),
+                SliverToBoxAdapter(child: _libraryHeader(scheme, songs, all)),
+                if (songs.isEmpty)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _emptyState(
+                      context,
+                      _favoritesOnly
+                          ? Icons.favorite_border_rounded
+                          : Icons.search_off_rounded,
+                      _favoritesOnly
+                          ? 'No favourites yet.\nTap the ♥ on a song to keep it here.'
+                          : 'No songs match "$_query".',
+                    ),
+                  )
+                else
+                  SliverList.builder(
+                    itemCount: songs.length,
+                    itemBuilder: (context, i) {
+                      final song = songs[i];
+                      return Column(
+                        children: [
+                          _FadeSlideIn(
+                            index: i,
+                            child: MusicTile(
+                              songModel: song,
+                              onTap: () => _openPlayer(songs, i),
+                              onFavoriteChanged: () {
+                                if (_favoritesOnly) setState(() {});
+                              },
+                            ),
+                          ),
+                          if (i != songs.length - 1)
+                            Divider(
+                              height: 1,
+                              indent: 86,
+                              endIndent: 16,
+                              color: scheme.outlineVariant
+                                  .withValues(alpha: 0.4),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                const SliverToBoxAdapter(child: SizedBox(height: 28)),
+              ],
             ],
-          );
-        },
-      ),
-      floatingActionButton: FutureBuilder<List<SongModel>>(
-        future: _songsFuture,
-        builder: (context, snapshot) {
-          final songs = _applySearchAndSort(snapshot.data ?? <SongModel>[]);
-          if (songs.isEmpty) return const SizedBox.shrink();
-          return FloatingActionButton.extended(
-            onPressed: () => _openPlayer(context, songs, 0),
-            icon: const Icon(Icons.play_arrow_rounded),
-            label: const Text('Play all'),
           );
         },
       ),
@@ -287,7 +292,7 @@ class _HomePage extends State<MyHomePage> {
 
   Widget _searchField(ColorScheme scheme) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
       child: TextField(
         controller: _searchController,
         onChanged: (v) {
@@ -315,8 +320,10 @@ class _HomePage extends State<MyHomePage> {
           filled: true,
           fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
           isDense: true,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(24),
             borderSide: BorderSide.none,
           ),
         ),
@@ -324,9 +331,81 @@ class _HomePage extends State<MyHomePage> {
     );
   }
 
-  List<SongModel> _applySearchAndSort(List<SongModel> all) {
+  /// "Library" header: filter chips, song count, and the Play all / Shuffle
+  /// pills that act on the filtered list.
+  Widget _libraryHeader(
+      ColorScheme scheme, List<SongModel> songs, List<SongModel> all) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              ChoiceChip(
+                label: const Text('All'),
+                selected: !_favoritesOnly,
+                showCheckmark: false,
+                onSelected: (_) => setState(() => _favoritesOnly = false),
+              ),
+              const SizedBox(width: 8),
+              ChoiceChip(
+                avatar: Icon(
+                  Icons.favorite_rounded,
+                  size: 16,
+                  color: _favoritesOnly
+                      ? scheme.onSecondaryContainer
+                      : scheme.onSurfaceVariant,
+                ),
+                label: const Text('Favourites'),
+                selected: _favoritesOnly,
+                showCheckmark: false,
+                onSelected: (_) => setState(() => _favoritesOnly = true),
+              ),
+              const Spacer(),
+              Text(
+                '${songs.length} ${songs.length == 1 ? 'song' : 'songs'}',
+                style:
+                    TextStyle(color: scheme.onSurfaceVariant, fontSize: 12.5),
+              ),
+            ],
+          ),
+          if (songs.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: () => _openPlayer(songs, 0),
+                    icon: const Icon(Icons.play_arrow_rounded),
+                    label: const Text('Play all'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: () => _openPlayer(
+                      songs,
+                      Random().nextInt(songs.length),
+                      shuffle: true,
+                    ),
+                    icon: const Icon(Icons.shuffle_rounded),
+                    label: const Text('Shuffle'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  List<SongModel> _applyFilters(List<SongModel> all) {
     final q = _query.trim().toLowerCase();
+    final favs = _favoritesOnly ? PrefsService.instance.favorites : null;
     final list = all.where((s) {
+      if (favs != null && !favs.contains(s.id)) return false;
       if (q.isEmpty) return true;
       final title = s.displayNameWOExt.toLowerCase();
       final artist = (s.artist ?? '').toLowerCase();
@@ -358,16 +437,20 @@ class _HomePage extends State<MyHomePage> {
   }
 
   Widget _recentsStrip(List<SongModel> recents, List<SongModel> all) {
+    final scheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Padding(
-          padding: EdgeInsets.fromLTRB(16, 8, 16, 8),
+          padding: EdgeInsets.fromLTRB(16, 14, 16, 10),
           child: Text('Recently played',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+              style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 17,
+                  letterSpacing: -0.2)),
         ),
         SizedBox(
-          height: 140,
+          height: 148,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -378,44 +461,57 @@ class _HomePage extends State<MyHomePage> {
               return GestureDetector(
                 onTap: () {
                   final i = all.indexWhere((s) => s.id == song.id);
-                  _openPlayer(context, all, i < 0 ? 0 : i);
+                  _openPlayer(all, i < 0 ? 0 : i);
                 },
                 child: SizedBox(
-                  width: 96,
+                  width: 104,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
-                        child: QueryArtworkWidget(
-                          id: song.id,
-                          type: ArtworkType.AUDIO,
-                          artworkHeight: 96,
-                          artworkWidth: 96,
-                          artworkBorder: BorderRadius.circular(14),
-                          artworkFit: BoxFit.cover,
-                          nullArtworkWidget: Container(
-                            height: 96,
-                            width: 96,
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: songGradientForId(song.id),
-                              ),
-                              borderRadius: BorderRadius.circular(14),
+                      Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(18),
+                          boxShadow: [
+                            BoxShadow(
+                              color: scheme.shadow.withValues(alpha: 0.10),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
                             ),
-                            child: const Icon(Icons.music_note_rounded,
-                                color: Colors.white),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(18),
+                          child: QueryArtworkWidget(
+                            id: song.id,
+                            type: ArtworkType.AUDIO,
+                            artworkHeight: 104,
+                            artworkWidth: 104,
+                            artworkBorder: BorderRadius.circular(18),
+                            artworkFit: BoxFit.cover,
+                            nullArtworkWidget: Container(
+                              height: 104,
+                              width: 104,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: songGradientForId(song.id),
+                                ),
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                              child: const Icon(Icons.music_note_rounded,
+                                  color: Colors.white, size: 34),
+                            ),
                           ),
                         ),
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 7),
                       Text(
                         song.displayNameWOExt,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12),
+                        style: const TextStyle(
+                            fontSize: 12.5, fontWeight: FontWeight.w500),
                       ),
                     ],
                   ),
@@ -424,7 +520,6 @@ class _HomePage extends State<MyHomePage> {
             },
           ),
         ),
-        const Divider(height: 16),
       ],
     );
   }
@@ -437,8 +532,8 @@ class _HomePage extends State<MyHomePage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.library_music_outlined, size: 64, color: scheme.outline),
-            const SizedBox(height: 16),
+            _iconBadge(scheme, Icons.library_music_outlined),
+            const SizedBox(height: 20),
             Text(
               'AudioMark needs access to your audio to show your library.',
               textAlign: TextAlign.center,
@@ -459,7 +554,8 @@ class _HomePage extends State<MyHomePage> {
     );
   }
 
-  Widget _emptyState(BuildContext context, IconData icon, String message) {
+  Widget _emptyState(BuildContext context, IconData icon, String message,
+      {String? actionLabel, VoidCallback? onAction}) {
     final scheme = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
@@ -467,8 +563,8 @@ class _HomePage extends State<MyHomePage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 64, color: scheme.outline),
-            const SizedBox(height: 16),
+            _iconBadge(scheme, icon),
+            const SizedBox(height: 20),
             Text(
               message,
               textAlign: TextAlign.center,
@@ -477,15 +573,43 @@ class _HomePage extends State<MyHomePage> {
                   .bodyLarge
                   ?.copyWith(color: scheme.onSurfaceVariant),
             ),
+            if (actionLabel != null && onAction != null) ...[
+              const SizedBox(height: 20),
+              FilledButton.tonalIcon(
+                onPressed: onAction,
+                icon: const Icon(Icons.add_rounded),
+                label: Text(actionLabel),
+              ),
+            ],
           ],
         ),
       ),
     );
   }
+
+  Widget _iconBadge(ColorScheme scheme, IconData icon) {
+    return Container(
+      width: 88,
+      height: 88,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            scheme.primaryContainer,
+            scheme.primaryContainer.withValues(alpha: 0.55),
+          ],
+        ),
+      ),
+      child: Icon(icon, size: 40, color: scheme.onPrimaryContainer),
+    );
+  }
 }
 
 /// Fades and slides a child up into place, staggered by its list index, so the
-/// song list cascades in as it appears. Runs once on first mount.
+/// song list cascades in as it appears. Runs once on first mount; the stagger
+/// is capped so deep list items don't wait noticeably.
 class _FadeSlideIn extends StatefulWidget {
   final int index;
   final Widget child;
@@ -508,8 +632,9 @@ class _FadeSlideInState extends State<_FadeSlideIn>
   @override
   void initState() {
     super.initState();
+    final cappedIndex = widget.index > 10 ? 10 : widget.index;
     Future.delayed(
-      Duration(milliseconds: 60 * widget.index),
+      Duration(milliseconds: 50 * cappedIndex),
       () {
         if (mounted) _controller.forward();
       },
