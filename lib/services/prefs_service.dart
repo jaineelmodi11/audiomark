@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:songhut/models/loop_section.dart';
 
 /// Lightweight local persistence for the things the app should remember across
 /// launches: favourites, recently played, and each song's saved loop section
@@ -64,12 +67,44 @@ class PrefsService {
     await _prefs.setInt('loopEnd_$id', endSec);
   }
 
+  Future<void> clearLoop(int id) async {
+    await _prefs.remove('loopStart_$id');
+    await _prefs.remove('loopEnd_$id');
+  }
+
+  // ---- Named loop sections per song ("Chorus", "Drop", …) --------------------
+
+  List<LoopSection> getLoopSections(int id) {
+    final raw = _prefs.getString('sections_$id');
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw) as List<dynamic>;
+      return decoded
+          .whereType<Map<String, dynamic>>()
+          .map(LoopSection.fromJson)
+          .toList();
+    } catch (_) {
+      return const []; // corrupt entry — treat as none rather than crash
+    }
+  }
+
+  Future<void> setLoopSections(int id, List<LoopSection> sections) =>
+      _prefs.setString(
+          'sections_$id', jsonEncode(sections.map((s) => s.toJson()).toList()));
+
   // ---- Count-in (global): 3 beeps before playback starts --------------------
 
   bool get countInEnabled => _prefs.getBool('count_in') ?? false;
 
   Future<void> setCountInEnabled(bool value) =>
       _prefs.setBool('count_in', value);
+
+  // ---- Keep screen awake while playing (global, default on) -----------------
+
+  bool get keepAwakeEnabled => _prefs.getBool('keep_awake') ?? true;
+
+  Future<void> setKeepAwakeEnabled(bool value) =>
+      _prefs.setBool('keep_awake', value);
 
   // ---- Per-song tempo for the 8-count display -------------------------------
 
