@@ -17,7 +17,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 2.0.0+2
+version: 2.1.0+3
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -51,6 +51,13 @@ dependencies:
   path_provider: ^2.1.4
   path: ^1.9.0
   just_audio_background: ^0.0.1-beta.17
+  # Keeps the screen on while practising (toggle in Settings) so the phone
+  # doesn't sleep mid-choreography.
+  wakelock_plus: ^1.2.8
+  # Count-in beeps. Must NOT be a second just_audio player:
+  # just_audio_background allows exactly one just_audio instance (the media
+  # session), so the beeper uses a separate engine.
+  audioplayers: ^6.1.0
 
   
 
