@@ -1,14 +1,61 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 import 'package:provider/provider.dart';
-import 'package:songhut/provider/songModelProvider.dart';
+import 'package:songhut/provider/song_model_provider.dart';
 import 'package:songhut/screens/splash_screen.dart';
+import 'package:songhut/services/prefs_service.dart';
 import 'package:songhut/theme/app_theme.dart';
 
+/// Central crash hook. Every uncaught Flutter, platform and async error funnels
+/// here so nothing fails silently. Drop in Sentry/Crashlytics at this one spot
+/// (e.g. `Sentry.captureException(error, stackTrace: stack)`) to enable remote
+/// crash reporting — no other call sites need to change.
+void reportError(Object error, StackTrace? stack) {
+  debugPrint('AudioMark uncaught error: $error\n$stack');
+}
+
 void main() {
-  runApp(ChangeNotifierProvider(
-    create: (context) => SongModelProvider(),
-    child: const MyApp(),
-  ));
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+
+    // Route framework + platform errors through the single crash hook.
+    FlutterError.onError = (details) {
+      FlutterError.presentError(details);
+      reportError(details.exception, details.stack);
+    };
+    WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
+      reportError(error, stack);
+      return true;
+    };
+
+    await PrefsService.instance.init();
+    // Enable background audio + lock-screen / notification controls so dancers
+    // can put the phone down and keep practising.
+    try {
+      await JustAudioBackground.init(
+        androidNotificationChannelId: 'com.ayushshah.audiomark.channel.audio',
+        androidNotificationChannelName: 'AudioMark playback',
+        androidNotificationOngoing: true,
+      );
+    } catch (error, stack) {
+      // Non-fatal: fall back to foreground-only playback.
+      reportError(error, stack);
+    }
+    // Draw behind the status/navigation bars for a seamless, edge-to-edge feel.
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarDividerColor: Colors.transparent,
+    ));
+    runApp(ChangeNotifierProvider(
+      create: (context) => SongModelProvider(),
+      child: const MyApp(),
+    ));
+  }, reportError);
 }
 
 class MyApp extends StatelessWidget {

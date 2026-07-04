@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:songhut/constants.dart';
 import 'package:songhut/screens/homepage/home_page.dart';
@@ -14,10 +13,14 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    Timer(
-        const Duration(seconds: 1),
-        () => Navigator.of(context).pushReplacement(MaterialPageRoute(
-            builder: (BuildContext context) => const MyHomePage())));
+    // Navigate as soon as the first frame is painted instead of forcing a
+    // hardcoded 1s delay — faster perceived startup.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const MyHomePage()),
+      );
+    });
   }
 
   @override

@@ -1,30 +1,62 @@
 import 'package:flutter/material.dart';
+import 'package:songhut/constants.dart';
+import 'package:songhut/services/prefs_service.dart';
 
-/// A simple Settings / About screen. Replaces the old "Coming Soon" placeholder
-/// that the player and tile menus used to dead-end into.
-class SettingsScreen extends StatelessWidget {
+/// Settings: practice preferences plus About/Tips.
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
   @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final prefs = PrefsService.instance;
+
+    Widget sectionLabel(String text) => Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: Text(
+            text,
+            style: TextStyle(
+              color: scheme.primary,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.0,
+            ),
+          ),
+        );
+
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         children: [
           const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: Text(
-              'ABOUT',
-              style: TextStyle(
-                color: scheme.primary,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.0,
-              ),
-            ),
+          sectionLabel('PRACTICE'),
+          SwitchListTile(
+            secondary: const Icon(Icons.av_timer_rounded),
+            title: const Text('Count-in before play'),
+            subtitle: const Text('3 beeps before playback starts'),
+            value: prefs.countInEnabled,
+            onChanged: (v) async {
+              await prefs.setCountInEnabled(v);
+              setState(() {});
+            },
           ),
+          SwitchListTile(
+            secondary: const Icon(Icons.light_mode_outlined),
+            title: const Text('Keep screen awake'),
+            subtitle: const Text("Don't sleep while music is playing"),
+            value: prefs.keepAwakeEnabled,
+            onChanged: (v) async {
+              await prefs.setKeepAwakeEnabled(v);
+              setState(() {});
+            },
+          ),
+          const Divider(height: 24),
+          sectionLabel('ABOUT'),
           const ListTile(
             leading: Icon(Icons.music_note_rounded),
             title: Text('AudioMark'),
@@ -33,7 +65,7 @@ class SettingsScreen extends StatelessWidget {
           const ListTile(
             leading: Icon(Icons.info_outline),
             title: Text('Version'),
-            subtitle: Text('1.0.0'),
+            subtitle: Text(kAppVersion),
           ),
           ListTile(
             leading: const Icon(Icons.privacy_tip_outlined),
@@ -41,23 +73,18 @@ class SettingsScreen extends StatelessWidget {
             onTap: () => _showPrivacyInfo(context),
           ),
           const Divider(height: 24),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Text(
-              'TIPS',
-              style: TextStyle(
-                color: scheme.primary,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.0,
-              ),
-            ),
-          ),
+          sectionLabel('TIPS'),
           const ListTile(
             leading: Icon(Icons.repeat_rounded),
             title: Text('Loop a section'),
             subtitle: Text(
-                'On the player, drag the two outer handles to set a start and end point, then turn on loop.'),
+                'On the player, drag the two handles to set a start and end point, then turn on loop.'),
+          ),
+          const ListTile(
+            leading: Icon(Icons.bookmark_border_rounded),
+            title: Text('Save practice sections'),
+            subtitle: Text(
+                'Tap the bookmark on the player to name the current range — Chorus, Drop — and jump back to it any time.'),
           ),
           const ListTile(
             leading: Icon(Icons.speed_rounded),
@@ -65,6 +92,7 @@ class SettingsScreen extends StatelessWidget {
             subtitle: Text(
                 'Use the speed control to practice tricky choreography at a slower tempo.'),
           ),
+          const SizedBox(height: 16),
         ],
       ),
     );
