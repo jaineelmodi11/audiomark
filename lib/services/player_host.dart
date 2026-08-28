@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:on_audio_query/on_audio_query.dart';
+import 'package:section_loop/section_loop.dart' as sl;
 import 'package:songhut/services/prefs_service.dart';
 
 /// Owns the app's single [AudioPlayer], the current queue, and the
@@ -44,7 +45,14 @@ class PlayerHost {
   bool _listenersReady = false;
   bool _settling = false; // ignore stale index emissions during setQueue
   int _expectedInitialIndex = 0;
-  bool _enforcing = false; // re-entrancy guard around boundary seeks
+  /// Section looping lives in the `section_loop` package, which was extracted
+  /// from this file. It owns the seek guard and the whole-track rule, both of
+  /// which are covered by tests there.
+  late final sl.SectionLoopEngine _loop = sl.SectionLoopEngine(
+    onSeek: player.seek,
+    onPause: player.pause,
+    onPlay: player.play,
+  );
   int? _lastHandledIndex; // makes _onIndexChanged idempotent per index
 
   SongModel? get currentSong {
@@ -113,9 +121,25 @@ class PlayerHost {
   @visibleForTesting
   static bool isSubRange(double startSec, double endSec, double? durationSec) {
     if (durationSec == null || durationSec <= 0) return false;
-    if (endSec <= startSec) return false;
-    return startSec > 0.5 || endSec < durationSec - 0.5;
+    if (endSec <= startSec || startSec < 0) return false;
+    return _rangeProbe.isSubRange(
+      sl.LoopSection(
+        name: 'range',
+        start: _seconds(startSec),
+        end: _seconds(endSec),
+      ),
+      _seconds(durationSec),
+    );
   }
+
+  /// Engine used only to answer [isSubRange]; its callbacks never fire.
+  static final sl.SectionLoopEngine _rangeProbe = sl.SectionLoopEngine(
+    onSeek: (_) async {},
+    onPause: () async {},
+  );
+
+  static Duration _seconds(double value) =>
+      Duration(milliseconds: (value * 1000).round());
 
   void _ensureListeners() {
     if (_listenersReady) return;
@@ -126,25 +150,32 @@ class PlayerHost {
   }
 
   void _onPosition(Duration position) {
-    if (_enforcing) return;
-    final durationSec = player.duration?.inMilliseconds;
-    if (!isSubRange(_loopStartSec, _loopEndSec,
-        durationSec == null ? null : durationSec / 1000.0)) {
-      return; // full-track range: let just_audio complete + auto-advance
-    }
-    if (position.inMilliseconds / 1000.0 >= _loopEndSec) {
-      if (player.loopMode == LoopMode.all) {
-        // Loop on: jump back to the section start and keep playing.
-        _enforcing = true;
-        player
-            .seek(Duration(milliseconds: (_loopStartSec * 1000).round()))
-            .whenComplete(() => _enforcing = false);
-        if (!player.playing) player.play();
-      } else {
-        // Loop off: play the section once, then hold at the end.
-        player.pause();
-      }
-    }
+    // Loop on jumps back to the section start; loop off plays the section once
+    // and holds at the end. The engine handles the seek guard, and treats a
+    // whole-track range as no section so the queue still auto-advances.
+    _loop
+      ..behavior = player.loopMode == LoopMode.all
+          ? sl.SectionEndBehavior.loop
+          : sl.SectionEndBehavior.pauseAtEnd
+      ..section = _activeSection();
+    _loop.handlePosition(
+      position,
+      trackDuration: player.duration,
+      isPlaying: player.playing,
+    );
+  }
+
+  /// The current range as the package models it, or null when no usable
+  /// section is set. [sl.LoopSection] rejects inverted and infinite ranges,
+  /// and `_loopEndSec` is infinity until a song sets its own.
+  sl.LoopSection? _activeSection() {
+    if (!_loopEndSec.isFinite || _loopEndSec <= _loopStartSec) return null;
+    if (_loopStartSec < 0) return null;
+    return sl.LoopSection(
+      name: 'Section',
+      start: _seconds(_loopStartSec),
+      end: _seconds(_loopEndSec),
+    );
   }
 
   void _onIndexChanged(int? index) {

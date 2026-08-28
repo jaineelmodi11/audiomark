@@ -59,6 +59,10 @@ dependencies:
   # session), so the beeper uses a separate engine.
   audioplayers: ^6.1.0
 
+  # The section-loop engine, extracted from this app and published so the
+  # looping rules live in one tested place.
+  section_loop: ^0.1.0
+
   
 
 dev_dependencies:

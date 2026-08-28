@@ -704,6 +704,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.28.0"
+  section_loop:
+    dependency: "direct main"
+    description:
+      name: section_loop
+      sha256: f66c435e715a663fc76d15fc9eb9a5b0e1bf94fa0d4317b966549ae23bdf819e
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.0"
   shared_preferences:
     dependency: "direct main"
     description:
